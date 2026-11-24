@@ -59,6 +59,7 @@ import com.fongmi.android.tv.setting.OutputSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.setting.PreloadSetting;
 import com.fongmi.android.tv.setting.SpeedSetting;
+import com.fongmi.android.tv.sync.SyncPlayManager;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
@@ -76,7 +77,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class PlayerManager implements ParseCallback {
+public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
 
     private final PlayerEffectManager effects;
     private final Runnable runnable;
@@ -239,6 +240,16 @@ public class PlayerManager implements ParseCallback {
 
     public boolean isPlaying() {
         return player.isPlaying();
+    }
+
+    @Override
+    public boolean isPlayWhenReady() {
+        return player.getPlayWhenReady();
+    }
+
+    @Override
+    public boolean isBuffering() {
+        return player.getPlaybackState() == Player.STATE_BUFFERING;
     }
 
     public boolean isReleased() {
@@ -1232,12 +1243,23 @@ public class PlayerManager implements ParseCallback {
 
         @Override
         public void onPositionDiscontinuity(@NonNull Player.PositionInfo oldPosition, @NonNull Player.PositionInfo newPosition, int reason) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) SyncPlayManager.get().onLocalSeek();
             PendingPreload preload = queuedPreload;
             if (preload == null || newPosition.mediaItem == null) return;
             long duration = getPreviousDuration(oldPosition.mediaItemIndex);
             PlaySpec next = engine.consumePreload(newPosition.mediaItem);
             if (next != preload.spec()) return;
             applyPreloadTransition(preload, next, oldPosition.contentPositionMs, duration);
+        }
+
+        @Override
+        public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+            SyncPlayManager.get().onLocalPlayState(playWhenReady);
+        }
+
+        @Override
+        public void onMediaItemTransition(@Nullable MediaItem mediaItem, int reason) {
+            SyncPlayManager.get().onLocalMediaChanged();
         }
 
         @Override

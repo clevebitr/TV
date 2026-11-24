@@ -635,4 +635,39 @@
     <string name="dialog_min_choices">Select at least %1$d options</string>
     <string name="dialog_max_choices">Select at most %1$d options</string>
 
+
+    <!-- Sync play -->
+    <string name="sync_play_title">Watch together</string>
+    <string name="sync_play_open">Watch together</string>
+    <string name="sync_play_server">Server</string>
+    <string name="sync_play_server_info">Server: %1$s</string>
+    <string name="sync_play_tls">STARTTLS</string>
+    <string name="sync_play_latency_value">%1$d ms</string>
+    <string name="sync_play_latency_fail">Failed</string>
+    <string name="sync_play_test">Test</string>
+    <string name="sync_play_nickname">Nickname</string>
+    <string name="sync_play_room">Room</string>
+    <string name="sync_play_join">Join room</string>
+    <string name="sync_play_create">Create room</string>
+    <string name="sync_play_leave">Leave room</string>
+    <string name="sync_play_refresh">Refresh</string>
+    <string name="sync_play_users">Users</string>
+    <string name="sync_play_users_empty">No other user in this room</string>
+    <string name="sync_play_you">You</string>
+    <string name="sync_play_connecting">Connecting to %1$s</string>
+    <string name="sync_play_connected">Room: %1$s</string>
+    <string name="sync_play_left">Left the room</string>
+    <string name="sync_play_connect_fail">Sync play failed: %1$s</string>
+    <string name="sync_play_disconnected">Sync play disconnected: %1$s</string>
+    <string name="sync_play_only_user">You are the only user in this room</string>
+    <string name="sync_play_follow_user">Following the progress of %1$s</string>
+    <string name="sync_play_joined">%1$s joined the room</string>
+    <string name="sync_play_left_user">%1$s left the room</string>
+    <string name="sync_play_paused">%1$s paused the playback</string>
+    <string name="sync_play_played">%1$s started the playback</string>
+    <string name="sync_play_file">%1$s switched to %2$s</string>
+    <string name="sync_play_invalid_endpoint">Invalid server address</string>
+    <string name="sync_play_room_required">Enter a room name</string>
+    <string name="sync_play_nickname_required">Enter a nickname</string>
+
 </resources>

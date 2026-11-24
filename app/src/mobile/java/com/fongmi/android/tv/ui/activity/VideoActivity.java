@@ -104,6 +104,7 @@ import com.fongmi.android.tv.ui.dialog.ParseDialog;
 import com.fongmi.android.tv.ui.dialog.PlayerEngineDialog;
 import com.fongmi.android.tv.ui.dialog.ReceiveDialog;
 import com.fongmi.android.tv.ui.dialog.SpeedSettingDialog;
+import com.fongmi.android.tv.ui.dialog.SyncPlayDialog;
 import com.fongmi.android.tv.ui.dialog.TrackDialog;
 import com.fongmi.android.tv.utils.Clock;
 import com.fongmi.android.tv.utils.FileChooser;
@@ -410,6 +411,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, T
         mBinding.control.action.discMenu.setOnClickListener(this::onDiscMenu);
         mBinding.control.action.discMenu.setOnLongClickListener(this::onDiscMenuLong);
         mBinding.control.action.episodes.setOnClickListener(view -> onEpisodes());
+        mBinding.control.action.together.setOnClickListener(view -> onTogether());
         mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
         mBinding.control.action.ending.setOnLongClickListener(view -> onEndingReset());
         mBinding.control.action.opening.setOnLongClickListener(view -> onOpeningReset());
@@ -1088,6 +1090,11 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, T
     private void onDanmaku() {
         DanmakuDialog.create().show(this);
         hideControl();
+    }
+
+    private void onTogether() {
+        hideControl();
+        SyncPlayDialog.create().show(this);
     }
 
     private void onDanmakuShow() {

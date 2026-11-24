@@ -609,4 +609,39 @@
     <string name="dialog_min_choices">請選擇至少 %1$d 個選項</string>
     <string name="dialog_max_choices">請選擇最多 %1$d 個選項</string>
 
+
+    <!-- Sync play -->
+    <string name="sync_play_title">一起看</string>
+    <string name="sync_play_open">一起看</string>
+    <string name="sync_play_server">伺服器</string>
+    <string name="sync_play_server_info">伺服器：%1$s</string>
+    <string name="sync_play_tls">STARTTLS</string>
+    <string name="sync_play_latency_value">%1$d 毫秒</string>
+    <string name="sync_play_latency_fail">連線失敗</string>
+    <string name="sync_play_test">測試</string>
+    <string name="sync_play_nickname">暱稱</string>
+    <string name="sync_play_room">房間</string>
+    <string name="sync_play_join">加入房間</string>
+    <string name="sync_play_create">建立房間</string>
+    <string name="sync_play_leave">離開房間</string>
+    <string name="sync_play_refresh">重新整理</string>
+    <string name="sync_play_users">房間使用者</string>
+    <string name="sync_play_users_empty">房間內暫無其他使用者</string>
+    <string name="sync_play_you">你</string>
+    <string name="sync_play_connecting">正在連線 %1$s</string>
+    <string name="sync_play_connected">房間：%1$s</string>
+    <string name="sync_play_left">已離開房間</string>
+    <string name="sync_play_connect_fail">一起看連線失敗：%1$s</string>
+    <string name="sync_play_disconnected">一起看已中斷：%1$s</string>
+    <string name="sync_play_only_user">您目前是房間中的唯一使用者</string>
+    <string name="sync_play_follow_user">目前以 %1$s 的進度為準</string>
+    <string name="sync_play_joined">%1$s 加入了房間</string>
+    <string name="sync_play_left_user">%1$s 離開了房間</string>
+    <string name="sync_play_paused">%1$s 暫停了播放</string>
+    <string name="sync_play_played">%1$s 開始了播放</string>
+    <string name="sync_play_file">%1$s 切換到 %2$s</string>
+    <string name="sync_play_invalid_endpoint">伺服器位址不合法</string>
+    <string name="sync_play_room_required">請輸入房間名稱</string>
+    <string name="sync_play_nickname_required">請輸入暱稱</string>
+
 </resources>

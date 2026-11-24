@@ -45,6 +45,7 @@ import com.fongmi.android.tv.player.extractor.Source;
 import com.fongmi.android.tv.player.media.ArtworkBitmapLoader;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.setting.SpeedSetting;
+import com.fongmi.android.tv.sync.SyncPlayManager;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.github.catvod.utils.Task;
@@ -127,6 +128,7 @@ public class PlaybackService extends MediaLibraryService implements MediaLibrary
         super.onCreate();
         running = true;
         player = new PlayerManager(this);
+        SyncPlayManager.get().setPlayer(player);
         sessionPlayer = new SessionPlayer(player.getPlayer());
         session = new MediaLibrarySession.Builder(this, sessionPlayer, this).setBitmapLoader(new ArtworkBitmapLoader(this)).build();
         library = new BrowseLibrary(session);
@@ -328,6 +330,7 @@ public class PlaybackService extends MediaLibraryService implements MediaLibrary
         browsePlayback = null;
         BrowseTree.clear();
         releaseSession();
+        SyncPlayManager.get().setPlayer(null);
         player.release();
         removeForeground();
         Server.get().setService(null);
