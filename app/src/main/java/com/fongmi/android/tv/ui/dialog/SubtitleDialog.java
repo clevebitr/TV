@@ -108,13 +108,13 @@ public final class SubtitleDialog extends BaseBottomSheetDialog {
     }
 
     private void setPosition(float position) {
-        PlayerSetting.putSubtitlePosition(Util.constrainValue(position, MIN_BOTTOM_POSITION, MAX_BOTTOM_POSITION));
+        PlayerSetting.putSubtitlePosition(Math.min(Math.max(position, MIN_BOTTOM_POSITION), MAX_BOTTOM_POSITION));
         if (subtitleView != null) subtitleView.setBottomPosition(PlayerSetting.getSubtitlePosition());
         applySubtitleStyle();
     }
 
     private void setTextSize(float size) {
-        PlayerSetting.putSubtitleTextSize(Util.constrainValue(size, MIN_TEXT_SIZE, MAX_TEXT_SIZE));
+        PlayerSetting.putSubtitleTextSize(Math.min(Math.max(size, MIN_TEXT_SIZE), MAX_TEXT_SIZE));
         if (subtitleView != null) subtitleView.setFractionalTextSize(PlayerSetting.getSubtitleTextSize());
         applySubtitleStyle();
     }
