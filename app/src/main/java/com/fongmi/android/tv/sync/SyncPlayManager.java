@@ -162,6 +162,11 @@ public final class SyncPlayManager {
         this.connecting = true;
         updateStatus(ResUtil.getString(R.string.sync_play_connecting, endpoint.toString()));
         dispatchSession();
+        // The player must only be touched on the main thread, so snapshot it before connecting.
+        Player target = player;
+        double startPosition = target == null ? 0 : Math.max(0, target.getPosition() / 1000.0);
+        boolean startPaused = target == null || !target.isPlayWhenReady();
+        localPlaying = !startPaused;
         EXECUTOR.execute(() -> {
             Session current = new Session(id);
             SyncPlayClient created = new SyncPlayClient(endpoint.getHost(), endpoint.getPort(), tls, current);
@@ -173,8 +178,7 @@ public final class SyncPlayManager {
                     return;
                 }
                 client = created;
-                localPlaying = player != null && player.isPlayWhenReady();
-                created.setLocalState(player == null ? 0 : player.getPosition() / 1000.0, !localPlaying);
+                created.setLocalState(startPosition, startPaused);
                 created.join(room, nickname);
                 if (!current.isCurrent()) {
                     created.close();

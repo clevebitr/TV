@@ -12,6 +12,7 @@ public class SyncPlaySetting {
     private static final String KEY_ENDPOINT = "sync_play_endpoint";
     private static final String KEY_NICKNAME = "sync_play_nickname";
     private static final String KEY_TLS = "sync_play_tls";
+    private static final String KEY_ROOM = "sync_play_room";
 
     public static String getEndpoint() {
         String value = Prefers.getString(KEY_ENDPOINT, SyncPlayEndpoint.DEFAULT);
@@ -30,6 +31,14 @@ public class SyncPlaySetting {
 
     public static void putNickname(String nickname) {
         Prefers.put(KEY_NICKNAME, nickname);
+    }
+
+    public static String getRoom() {
+        return Prefers.getString(KEY_ROOM);
+    }
+
+    public static void putRoom(String room) {
+        Prefers.put(KEY_ROOM, room);
     }
 
     public static boolean isTls() {

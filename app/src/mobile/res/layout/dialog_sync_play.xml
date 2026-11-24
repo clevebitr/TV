@@ -66,71 +66,66 @@
             android:orientation="vertical"
             android:paddingHorizontal="24dp">
 
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/serverLayout"
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/server"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
+                android:background="@drawable/shape_accent"
+                android:completionThreshold="1"
                 android:hint="@string/sync_play_server"
-                app:endIconMode="dropdown_menu">
-
-                <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                    android:id="@+id/server"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:imeOptions="actionDone"
-                    android:importantForAutofill="no"
-                    android:inputType="text"
-                    android:maxLines="1"
-                    android:singleLine="true" />
-
-            </com.google.android.material.textfield.TextInputLayout>
+                android:imeOptions="actionDone"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:paddingHorizontal="16dp"
+                android:singleLine="true"
+                android:textColor="?attr/colorOnSurface"
+                android:textColorHint="?attr/colorOnSurfaceVariant"
+                android:textSize="14sp"
+                tools:ignore="VisualLintTextFieldSize" />
 
             <com.google.android.material.checkbox.MaterialCheckBox
                 android:id="@+id/tls"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="4dp"
+                android:minHeight="40dp"
                 android:text="@string/sync_play_tls"
                 android:textColor="?attr/colorOnSurface"
                 android:textSize="14sp" />
 
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/nicknameLayout"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/nickname"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_marginTop="8dp"
-                android:hint="@string/sync_play_nickname">
+                android:background="@drawable/shape_accent"
+                android:hint="@string/sync_play_nickname"
+                android:imeOptions="actionNext"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:maxLength="16"
+                android:paddingHorizontal="16dp"
+                android:singleLine="true"
+                android:textColor="?attr/colorOnSurface"
+                android:textColorHint="?attr/colorOnSurfaceVariant"
+                android:textSize="14sp" />
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/nickname"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:imeOptions="actionNext"
-                    android:importantForAutofill="no"
-                    android:inputType="text"
-                    android:maxLength="16"
-                    android:singleLine="true" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/roomLayout"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/room"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_marginTop="8dp"
-                android:hint="@string/sync_play_room">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/room"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:imeOptions="actionDone"
-                    android:importantForAutofill="no"
-                    android:inputType="text"
-                    android:maxLength="35"
-                    android:singleLine="true" />
-
-            </com.google.android.material.textfield.TextInputLayout>
+                android:background="@drawable/shape_accent"
+                android:hint="@string/sync_play_room"
+                android:imeOptions="actionDone"
+                android:importantForAutofill="no"
+                android:inputType="text"
+                android:maxLength="35"
+                android:paddingHorizontal="16dp"
+                android:singleLine="true"
+                android:textColor="?attr/colorOnSurface"
+                android:textColorHint="?attr/colorOnSurfaceVariant"
+                android:textSize="14sp" />
 
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:layout_width="match_parent"

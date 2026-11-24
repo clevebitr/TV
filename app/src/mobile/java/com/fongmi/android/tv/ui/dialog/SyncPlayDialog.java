@@ -22,6 +22,8 @@ import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayManager.Listener {
@@ -50,11 +52,11 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         adapter = new SyncPlayUserAdapter();
         binding.recycler.setAdapter(adapter);
         binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 8));
-        binding.server.setAdapter(new ArrayAdapter<>(requireContext(), android.R.layout.simple_list_item_1, SyncPlayEndpoint.OFFICIAL));
+        binding.server.setAdapter(new ArrayAdapter<>(requireContext(), android.R.layout.simple_list_item_1, getServers()));
         binding.server.setText(SyncPlaySetting.getEndpoint(), false);
         binding.tls.setChecked(SyncPlaySetting.isTls());
         binding.nickname.setText(SyncPlaySetting.getNickname());
-        binding.room.setText(manager.getRoom());
+        binding.room.setText(manager.isConnected() ? manager.getRoom() : SyncPlaySetting.getRoom());
         manager.addListener(this);
         render();
         test();
@@ -67,18 +69,42 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         binding.join.setOnClickListener(view -> connect(false));
         binding.create.setOnClickListener(view -> connect(true));
         binding.leave.setOnClickListener(view -> SyncPlayManager.get().leave());
+        binding.server.setOnClickListener(view -> binding.server.showDropDown());
         binding.server.setOnItemClickListener((parent, view, position, id) -> {
-            String endpoint = SyncPlayEndpoint.OFFICIAL.get(position);
+            String endpoint = (String) parent.getItemAtPosition(position);
             binding.server.setText(endpoint, false);
             binding.tls.setChecked(SyncPlayEndpoint.isOfficial(endpoint));
+            savePreferences();
             test();
         });
+        binding.tls.setOnCheckedChangeListener((button, checked) -> savePreferences());
     }
 
     @Override
     public void onDestroyView() {
+        savePreferences();
         SyncPlayManager.get().removeListener(this);
         super.onDestroyView();
+    }
+
+    private List<String> getServers() {
+        List<String> servers = new ArrayList<>(SyncPlayEndpoint.OFFICIAL);
+        String saved = SyncPlaySetting.getEndpoint();
+        if (!servers.contains(saved)) servers.add(saved);
+        return servers;
+    }
+
+    private void savePreferences() {
+        if (binding == null) return;
+        String server = binding.server.getText().toString().trim();
+        if (SyncPlayEndpoint.parse(server) != null) {
+            SyncPlaySetting.putEndpoint(server);
+            SyncPlaySetting.putTls(SyncPlayEndpoint.isOfficial(server) || binding.tls.isChecked());
+        }
+        String nickname = binding.nickname.getText().toString().trim();
+        if (!nickname.isEmpty()) SyncPlaySetting.putNickname(nickname);
+        String room = binding.room.getText().toString().trim();
+        if (!room.isEmpty()) SyncPlaySetting.putRoom(room);
     }
 
     @Override
@@ -172,6 +198,7 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         SyncPlaySetting.putEndpoint(value);
         SyncPlaySetting.putNickname(nickname);
         SyncPlaySetting.putTls(tls);
+        SyncPlaySetting.putRoom(room);
         binding.room.setText(room);
         SyncPlayManager.get().connect(endpoint, tls, room, nickname);
     }
