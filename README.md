@@ -29,7 +29,7 @@ Android TV、手機、平板都能用，支援本地檔案與網址播放。
 ## 建置與發布
 
 推送 `v*` 標籤或手動觸發 `.github/workflows/release.yml` 會建置 4 個 APK（手機／電視 × 兩種 ABI）並發布 Release。
-播放器依賴未入庫，需在倉庫 Secrets 中設定：
+播放器依賴（`lib-mpvplayer-release.aar`、`lib-decoder-ffmpeg-release.aar`）未入庫，二選一提供：直接放進 `app/libs`（`.gitignore` 已放行），或在倉庫 Secrets 中設定：
 
 | Secret | 內容 |
 | --- | --- |

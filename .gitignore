@@ -12,6 +12,7 @@ node_modules/
 *.properties
 !runtime/gradle.properties
 lib-*.aar
+!app/libs/*.aar
 /Release/
 /docs/
 

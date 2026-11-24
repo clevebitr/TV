@@ -96,13 +96,16 @@ jobs:
           FFMPEG_AAR: ${{ secrets.PLAYER_AAR_FFMPEG_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -z "${MPV_AAR}" ] || [ -z "${FFMPEG_AAR}" ]; then
-            echo "::error::Missing PLAYER_AAR_MPV_BASE64 / PLAYER_AAR_FFMPEG_BASE64 repository secrets."
+          mkdir -p app/libs
+          if [ -n "${MPV_AAR}" ] && [ -n "${FFMPEG_AAR}" ]; then
+            printf '%s' "${MPV_AAR}" | base64 -d > app/libs/lib-mpvplayer-release.aar
+            printf '%s' "${FFMPEG_AAR}" | base64 -d > app/libs/lib-decoder-ffmpeg-release.aar
+          elif [ -f app/libs/lib-mpvplayer-release.aar ] && [ -f app/libs/lib-decoder-ffmpeg-release.aar ]; then
+            echo "Using player artifacts committed in app/libs"
+          else
+            echo "::error::Missing player artifacts: set PLAYER_AAR_MPV_BASE64 / PLAYER_AAR_FFMPEG_BASE64 secrets or commit the AARs into app/libs."
             exit 1
           fi
-          mkdir -p app/libs
-          printf '%s' "${MPV_AAR}" | base64 -d > app/libs/lib-mpvplayer-release.aar
-          printf '%s' "${FFMPEG_AAR}" | base64 -d > app/libs/lib-decoder-ffmpeg-release.aar
           ls -l app/libs
 
       - name: Prepare signing config
