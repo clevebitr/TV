@@ -4,14 +4,13 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
-import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.api.SiteApi;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.Result;
 import com.fongmi.android.tv.bean.Site;
-import com.fongmi.android.tv.event.RefreshEvent;
-import com.fongmi.android.tv.utils.Notify;
+import com.fongmi.android.tv.exception.ExtractException;
+import com.github.catvod.utils.Trans;
 
 import java.util.HashMap;
 import java.util.List;
@@ -20,23 +19,28 @@ import java.util.concurrent.Callable;
 public class SiteViewModel extends ViewModel {
 
     private final MutableLiveData<Result> result;
+    private final MutableLiveData<Result> player;
     private final MutableLiveData<Result> search;
     private final MutableLiveData<Result> action;
 
     private final ViewModelTaskRunner<TaskType> tasks;
     private final ViewModelSearchRunner searches;
-    private boolean loadingHome;
 
     public SiteViewModel() {
         result = new MutableLiveData<>();
+        player = new MutableLiveData<>();
         search = new MutableLiveData<>();
         action = new MutableLiveData<>();
-        tasks = new ViewModelTaskRunner<>(TaskType.class, App::post);
+        tasks = new ViewModelTaskRunner<>(TaskType.class);
         searches = new ViewModelSearchRunner();
     }
 
     public LiveData<Result> getResult() {
         return result;
+    }
+
+    public LiveData<Result> getPlayer() {
+        return player;
     }
 
     public LiveData<Result> getSearch() {
@@ -50,35 +54,13 @@ public class SiteViewModel extends ViewModel {
     public SiteViewModel init() {
         search.setValue(null);
         result.setValue(null);
+        player.setValue(null);
         action.setValue(null);
         return this;
     }
 
     public void homeContent() {
-        loadingHome = true;
-        loadHomeContent(VodConfig.get().getHome(), false);
-    }
-
-    public void refreshHomeContent(Site site) {
-        if (!site.isEmpty()) loadHomeContent(site, true);
-    }
-
-    private void loadHomeContent(Site site, boolean notifyCategories) {
-        tasks.execute(TaskType.RESULT, Constant.TIMEOUT_VOD, () -> SiteApi.homeContent(site), value -> onHomeContent(site.getKey(), value, notifyCategories), this::handleHomeError);
-    }
-
-    private void onHomeContent(String siteKey, Result value, boolean notifyCategories) {
-        boolean success = value.getCode() == 0;
-        if (!loadingHome && !success) return;
-        loadingHome = false;
-        result.setValue(value);
-        if (notifyCategories && success) RefreshEvent.homeContentLoaded(siteKey, value);
-    }
-
-    private void handleHomeError(Throwable error) {
-        MutableLiveData<Result> output = loadingHome ? result : null;
-        loadingHome = false;
-        handleError(TaskType.RESULT, output, error);
+        execute(TaskType.RESULT, result, () -> SiteApi.homeContent(VodConfig.get().getHome()));
     }
 
     public void categoryContent(String key, String tid, String page, boolean filter, HashMap<String, String> extend) {
@@ -93,23 +75,24 @@ public class SiteViewModel extends ViewModel {
         execute(TaskType.RESULT, result, () -> SiteApi.detailContent(key, id));
     }
 
+    public void playerContent(String key, String flag, String id) {
+        execute(TaskType.PLAYER, player, () -> SiteApi.playerContent(key, flag, id));
+    }
+
     public void searchContent(Site site, String keyword, boolean quick, String page) {
-        execute(TaskType.RESULT, result, new SearchTask(site, keyword, quick, page));
+        execute(TaskType.RESULT, result, SearchTask.create(site, keyword, quick, page));
     }
 
     public void searchContent(List<Site> sites, String keyword, boolean quick) {
-        searches.start(sites, site -> new SearchTask(site, keyword, quick, "1"), search::postValue);
+        searches.start(sites, site -> SearchTask.create(site, keyword, quick), search::postValue);
     }
 
     private void execute(TaskType type, MutableLiveData<Result> liveData, Callable<Result> callable) {
-        tasks.execute(type, Constant.TIMEOUT_VOD, callable, liveData::setValue, error -> handleError(type, liveData, error));
-    }
-
-    private void handleError(TaskType type, MutableLiveData<Result> liveData, Throwable error) {
-        String message = Notify.getError(error);
-        if (liveData != null) liveData.setValue(message == null ? Result.empty() : Result.error(message));
-        if (type == TaskType.RESULT && message != null) Notify.show(message);
-        error.printStackTrace();
+        tasks.execute(type, Constant.TIMEOUT_VOD, callable, liveData::postValue, error -> {
+            if (error instanceof ExtractException) liveData.postValue(Result.error(error.getMessage()));
+            else liveData.postValue(Result.empty());
+            error.printStackTrace();
+        });
     }
 
     public void stopSearch() {
@@ -124,6 +107,20 @@ public class SiteViewModel extends ViewModel {
 
     private record SearchTask(Site site, String keyword, boolean quick, String page) implements Callable<Result> {
 
+        private static final String FIRST_PAGE = "1";
+
+        SearchTask {
+            keyword = Trans.t2s(keyword);
+        }
+
+        private static SearchTask create(Site site, String keyword, boolean quick) {
+            return create(site, keyword, quick, FIRST_PAGE);
+        }
+
+        private static SearchTask create(Site site, String keyword, boolean quick, String page) {
+            return new SearchTask(site, keyword, quick, page);
+        }
+
         @Override
         public Result call() throws Exception {
             if (quick && !site.isQuickSearch()) return Result.empty();
@@ -131,5 +128,5 @@ public class SiteViewModel extends ViewModel {
         }
     }
 
-    private enum TaskType {RESULT, ACTION}
+    private enum TaskType {RESULT, PLAYER, ACTION}
 }

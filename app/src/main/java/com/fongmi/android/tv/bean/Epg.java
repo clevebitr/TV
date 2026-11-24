@@ -27,11 +27,7 @@ public class Epg {
     private int width;
 
     public static Epg objectFrom(String str, String key, ZoneId zoneId) {
-        return objectFrom(str, key, null, zoneId);
-    }
-
-    public static Epg objectFrom(String str, String key, String date, ZoneId zoneId) {
-        if (!Json.isObj(str)) return EpgParser.getEpg(str, key, date, zoneId);
+        if (!Json.isObj(str)) return EpgParser.getEpg(str, key, zoneId);
         try {
             Epg item = App.gson().fromJson(str, Epg.class);
             item.setTime(zoneId);
@@ -88,14 +84,12 @@ public class Epg {
 
     private void setTime(ZoneId zoneId) {
         setList(new ArrayList<>(new LinkedHashSet<>(getList())));
-        for (EpgData item : getList()) setTime(item, zoneId);
-    }
-
-    private void setTime(EpgData item, ZoneId zoneId) {
-        item.setStartTime(parseEpgTime(getDate().concat(item.getStart()), zoneId));
-        item.setEndTime(parseEpgTime(getDate().concat(item.getEnd()), zoneId));
-        if (item.getEndTime() < item.getStartTime()) item.checkDay(zoneId);
-        item.trans();
+        for (EpgData item : getList()) {
+            item.setStartTime(parseEpgTime(getDate().concat(item.getStart()), zoneId));
+            item.setEndTime(parseEpgTime(getDate().concat(item.getEnd()), zoneId));
+            if (item.getEndTime() < item.getStartTime()) item.checkDay(zoneId);
+            item.trans();
+        }
     }
 
     public EpgData getEpgData() {
@@ -104,8 +98,7 @@ public class Epg {
     }
 
     public Epg selected() {
-        long now = System.currentTimeMillis();
-        for (EpgData item : getList()) item.setSelected(item.isInRange(now));
+        for (EpgData item : getList()) item.setSelected(item.isInRange());
         return this;
     }
 
@@ -115,8 +108,7 @@ public class Epg {
     }
 
     public int getInRange() {
-        long now = System.currentTimeMillis();
-        for (int i = 0; i < getList().size(); i++) if (getList().get(i).isInRange(now)) return i;
+        for (int i = 0; i < getList().size(); i++) if (getList().get(i).isInRange()) return i;
         return -1;
     }
 

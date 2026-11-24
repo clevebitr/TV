@@ -6,13 +6,13 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaMetadata;
@@ -27,6 +27,7 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.Constant;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.LiveConfig;
+import com.fongmi.android.tv.bean.CastVideo;
 import com.fongmi.android.tv.bean.Channel;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Epg;
@@ -43,31 +44,30 @@ import com.fongmi.android.tv.impl.CustomTarget;
 import com.fongmi.android.tv.impl.LiveListener;
 import com.fongmi.android.tv.impl.PassListener;
 import com.fongmi.android.tv.model.LiveViewModel;
-import com.fongmi.android.tv.playback.PlaybackAction;
-import com.fongmi.android.tv.playback.PlaybackOrientation;
-import com.fongmi.android.tv.playback.PlaybackReset;
-import com.fongmi.android.tv.playback.PlaybackResult;
-import com.fongmi.android.tv.playback.live.LivePlayRequest;
-import com.fongmi.android.tv.playback.live.LivePlaybackController;
-import com.fongmi.android.tv.playback.live.LivePlaybackHost;
 import com.fongmi.android.tv.player.extractor.Source;
+import com.fongmi.android.tv.player.util.PlayerHelper;
 import com.fongmi.android.tv.service.PlaybackService;
 import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.setting.PlayerSetting;
 import com.fongmi.android.tv.ui.adapter.ChannelAdapter;
 import com.fongmi.android.tv.ui.adapter.EpgDataAdapter;
 import com.fongmi.android.tv.ui.adapter.GroupAdapter;
-import com.fongmi.android.tv.ui.custom.PinchScaleFeedback;
-import com.fongmi.android.tv.ui.custom.TouchInput;
+import com.fongmi.android.tv.ui.custom.CustomKeyDown;
 import com.fongmi.android.tv.ui.dialog.CastDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.InfoDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
 import com.fongmi.android.tv.ui.dialog.PassDialog;
 import com.fongmi.android.tv.ui.dialog.PlayerEngineDialog;
-import com.fongmi.android.tv.ui.dialog.DecoderSettingDialog;
-import com.fongmi.android.tv.ui.dialog.SpeedSettingDialog;
+import com.fongmi.android.tv.ui.dialog.SubtitleDialog;
 import com.fongmi.android.tv.ui.dialog.TrackDialog;
+import com.fongmi.android.tv.playback.live.LivePlayRequest;
+import com.fongmi.android.tv.playback.live.LivePlaybackController;
+import com.fongmi.android.tv.playback.live.LivePlaybackHost;
+import com.fongmi.android.tv.playback.live.LivePlaybackMedia;
+import com.fongmi.android.tv.playback.PlaybackAction;
+import com.fongmi.android.tv.playback.PlaybackOrientation;
+import com.fongmi.android.tv.playback.PlaybackReset;
 import com.fongmi.android.tv.utils.Biometric;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.Notify;
@@ -84,26 +84,27 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class LiveActivity extends PlaybackActivity implements TouchInput.Listener, Biometric.Callback, PassListener, ConfigListener, LiveListener, GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, LivePlaybackHost {
+public class LiveActivity extends PlaybackActivity implements CustomKeyDown.Listener, TrackDialog.Listener, Biometric.Callback, PassListener, ConfigListener, LiveListener, GroupAdapter.OnClickListener, ChannelAdapter.OnClickListener, EpgDataAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener, LivePlaybackHost {
 
     private ActivityLiveBinding mBinding;
-    private LiveViewModel mViewModel;
-    private LivePlaybackController mLive;
-    private GroupAdapter mGroupAdapter;
     private ChannelAdapter mChannelAdapter;
     private EpgDataAdapter mEpgDataAdapter;
-    private TouchInput mInput;
-    private PinchScaleFeedback mScaleFeedback;
-    private PiP mPiP;
+    private LivePlaybackController mLive;
+    private Observer<Result> mObserveUrl;
+    private GroupAdapter mGroupAdapter;
+    private Observer<Epg> mObserveEpg;
+    private LiveViewModel mViewModel;
+    private CustomKeyDown mKeyDown;
+    private String mPlaybackKey;
+    private List<Group> mHides;
+    private Channel mChannel;
+    private Group mGroup;
     private Runnable mR1;
     private Runnable mR2;
     private Runnable mR3;
-    private List<Group> mHides;
-    private Group mGroup;
-    private Channel mChannel;
-    private String mPlaybackKey;
     private boolean rotate;
     private int count;
+    private PiP mPiP;
 
     public static void start(Context context) {
         context.startActivity(new Intent(context, LiveActivity.class).putExtra("empty", LiveConfig.isEmpty()));
@@ -153,7 +154,9 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
 
     @Override
     protected void onServiceConnected() {
-        mLive.onPlaybackServiceReady();
+        PlaybackAction.setPlaybackMode(player(), mBinding.control.action.player, mBinding.control.action.decode);
+        PlaybackAction.setSpeedText(player(), mBinding.control.action.speed);
+        checkLive();
     }
 
     @Override
@@ -165,10 +168,11 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     @Override
     protected void initView(Bundle savedInstanceState) {
         super.initView(savedInstanceState);
-        mInput = TouchInput.create(this, mBinding.player, this);
-        mScaleFeedback = new PinchScaleFeedback(mBinding.widget.scale);
+        mKeyDown = CustomKeyDown.create(this, mBinding.player);
         setPadding(mBinding.control.getRoot());
         setPadding(mBinding.recycler, true);
+        mObserveUrl = this::onUrlObserved;
+        mObserveEpg = this::setEpg;
         mHides = new ArrayList<>();
         mR1 = this::hideControl;
         mR2 = this::setTraffic;
@@ -177,7 +181,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         setRecyclerView();
         setVideoView();
         setViewModel();
-        checkLive();
     }
 
     @Override
@@ -202,11 +205,11 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         mBinding.control.action.invert.setOnClickListener(view -> onInvert());
         mBinding.control.action.across.setOnClickListener(view -> onAcross());
         mBinding.control.action.change.setOnClickListener(view -> onChange());
-        mBinding.control.action.player.setOnClickListener(view -> onPlayer());
-        mBinding.control.action.decoder.setOnClickListener(view -> onDecoder());
-        mBinding.control.action.speed.setOnLongClickListener(view -> onSpeedLong());
+        mBinding.control.action.player.setOnClickListener(view -> onChoose());
+        mBinding.control.action.decode.setOnClickListener(view -> onDecode());
+        mBinding.control.action.text.setOnLongClickListener(view -> onTextLong());
         mBinding.control.action.getRoot().setOnTouchListener(this::onActionTouch);
-        mBinding.video.setOnTouchListener((view, event) -> mInput.onTouchEvent(event));
+        mBinding.video.setOnTouchListener((view, event) -> mKeyDown.onTouchEvent(event));
     }
 
     private void setRecyclerView() {
@@ -228,44 +231,39 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     private void setPlaybackMode() {
-        if (isWebPlaybackActive()) return;
-        PlaybackAction.setPlaybackMode(player(), mBinding.control.action.player);
+        PlaybackAction.setPlaybackMode(player(), mBinding.control.action.player, mBinding.control.action.decode);
     }
 
     private void setScale(int scale) {
         LiveSetting.putScale(scale);
-        mBinding.player.setResizeMode(PlayerSetting.getScaleMode(scale));
+        mBinding.player.setResizeMode(scale);
         mBinding.control.action.scale.setText(ResUtil.getStringArray(R.array.select_scale)[scale]);
     }
 
     private void setViewModel() {
         mViewModel = new ViewModelProvider(this).get(LiveViewModel.class);
         mLive = mViewModel.createPlaybackController(this);
-        observeWhenServiceReady(mViewModel.playback(), this::onPlaybackObserved);
-        observeWhenServiceReady(mViewModel.error(), this::onLoadErrorObserved);
-        observeForever(mViewModel.epg(), this::onEpgLoaded);
-        mViewModel.live().observe(this, this::onLiveParsed);
-        mViewModel.xml().observe(this, this::onXmlParsed);
+        observeForever(mViewModel.url(), mObserveUrl);
+        mViewModel.xml().observe(this, this::setEpg);
+        observeForever(mViewModel.epg(), mObserveEpg);
+        mViewModel.live().observe(this, live -> {
+            mViewModel.parseXml(live);
+            setGroup(live);
+            setWidth(live);
+        });
     }
 
-    private void onLiveParsed(Live live) {
-        mViewModel.parseXml(live);
-        setGroup(live);
-        setWidth(live);
-    }
-
-    private void onPlaybackObserved(PlaybackResult<LivePlayRequest> result) {
-        mLive.onPlaybackResult(result);
-    }
-
-    private void onLoadErrorObserved(String msg) {
-        if (msg == null || msg.isEmpty()) return;
-        resetPlaybackForError(msg);
+    private void onUrlObserved(Result result) {
+        if (service() == null) return;
+        mLive.onUrlResult(result);
     }
 
     private void checkLive() {
-        if (isEmpty()) LiveConfig.get().init().load(getCallback());
-        else getLive();
+        if (isEmpty()) {
+            LiveConfig.get().init().load(getCallback());
+        } else {
+            getLive();
+        }
     }
 
     private Callback getCallback() {
@@ -357,17 +355,17 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     private void onCast() {
-        CastDialog.createLive(player()).show(this);
+        CastDialog.create().video(new CastVideo(mBinding.control.title.getText().toString(), player().getUrl(), androidx.media3.common.C.TIME_UNSET, player().getHeaders())).fm(false).show(this);
     }
 
     private void onInfo() {
-        InfoDialog.create(player()).show(this);
+        InfoDialog.create().title(mBinding.control.title.getText()).headers(player().getHeaders()).url(player().getUrl()).show(this);
     }
 
     private void onLock() {
         setLock(!isLock());
         setRequestedOrientation(getLockOrient());
-        mInput.setLock(isLock());
+        mKeyDown.setLock(isLock());
         checkLockImg();
         showControl();
     }
@@ -379,12 +377,12 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     private void checkPlay() {
-        if (isWebPlaybackPlaying() || player().isPlaying()) onPaused();
+        if (player().isPlaying()) onPaused();
         else onPlay();
     }
 
     private void onTrack(View view) {
-        TrackDialog.create().type(Integer.parseInt(view.getTag().toString())).show(this);
+        TrackDialog.create().type(Integer.parseInt(view.getTag().toString())).player(player()).show(this);
         hideControl();
     }
 
@@ -399,20 +397,16 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     private void onScale() {
-        if (mInput.isScaled()) mInput.resetScale();
-        else setScale((LiveSetting.getScale() + 1) % ResUtil.getStringArray(R.array.select_scale).length);
+        int index = LiveSetting.getScale();
+        String[] array = ResUtil.getStringArray(R.array.select_scale);
+        if (mKeyDown.getScale() != 1.0f) mKeyDown.resetScale();
+        else setScale(index == array.length - 1 ? 0 : ++index);
         setR1Callback();
     }
 
     private void onSpeed() {
-        SpeedSettingDialog.create().show(this);
-        hideControl();
-    }
-
-    private boolean onSpeedLong() {
-        PlaybackAction.toggleSpeed(player(), mBinding.widget.message);
+        PlaybackAction.addSpeed(player(), mBinding.control.action.speed);
         setR1Callback();
-        return true;
     }
 
     private void onConfig() {
@@ -438,14 +432,20 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         mBinding.control.action.change.setSelected(LiveSetting.isChange());
     }
 
-    private void onPlayer() {
-        PlayerEngineDialog.show(this);
+    private void onDecode() {
+        PlaybackAction.toggleDecode(player());
+        setR1Callback();
+    }
+
+    private void onChoose() {
+        PlayerEngineDialog.show(this, mBinding.control.action.player, player(), mBinding.control.title.getText());
         hideControl();
     }
 
-    private void onDecoder() {
-        DecoderSettingDialog.create().show(this);
-        hideControl();
+    private boolean onTextLong() {
+        if (!player().haveTrack(C.TRACK_TYPE_TEXT)) return false;
+        onSubtitleClick();
+        return true;
     }
 
     private boolean onActionTouch(View v, MotionEvent e) {
@@ -499,7 +499,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     private void showError(String text) {
-        PlaybackAction.hideSpeedHint(mBinding.widget.message);
         mBinding.widget.error.setVisibility(View.VISIBLE);
         mBinding.widget.error.setText(text);
         hideProgress();
@@ -593,8 +592,11 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
 
     @Override
     public void onItemClick(Channel item) {
-        if (!item.getData(mViewModel.getZoneId()).getList().isEmpty() && item.isSelected() && mChannel != null && mChannel.equals(item) && mChannel.getGroup().equals(mGroup)) showEpg(item);
-        else if (mGroup != null) mLive.selectChannel(item.group(mGroup));
+        if (!item.getData(mViewModel.getZoneId()).getList().isEmpty() && item.isSelected() && mChannel != null && mChannel.equals(item) && mChannel.getGroup().equals(mGroup)) {
+            showEpg(item);
+        } else if (mGroup != null) {
+            mLive.selectChannel(item.group(mGroup));
+        }
     }
 
     @Override
@@ -604,7 +606,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         Notify.show(exist ? R.string.keep_del : R.string.keep_add);
         if (exist) delKeep(item);
         else addKeep(item);
-        RefreshEvent.keep();
         return true;
     }
 
@@ -632,8 +633,10 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         mBinding.widget.play.setText("");
         mBinding.widget.name.setMaxEms(48);
         mChannel.loadLogo(mBinding.widget.logo);
+        mBinding.control.title.setSelected(true);
         mBinding.widget.line.setText(mChannel.getLine());
         mBinding.widget.name.setText(mChannel.getShow());
+        mBinding.control.title.setText(mChannel.getShow());
         mBinding.widget.namePip.setText(mChannel.getShow());
         mBinding.widget.number.setText(mChannel.getNumber());
         mBinding.widget.numberPip.setText(mChannel.getNumber());
@@ -642,22 +645,31 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         mBinding.control.action.line.setVisibility(mBinding.widget.line.getVisibility());
     }
 
-    private void onEpgLoaded(Epg epg) {
+    private void setEpg(Epg epg) {
         if (mChannel == null || !mChannel.getTvgId().equals(epg.getKey())) return;
         EpgData data = epg.getEpgData();
+        boolean hasTitle = !data.getTitle().isEmpty();
         mEpgDataAdapter.addAll(epg.getList());
-        mLive.onEpgChanged(data);
+        if (hasTitle) mBinding.control.title.setText(getString(R.string.detail_title, mChannel.getShow(), data.getTitle()));
+        mBinding.widget.name.setMaxEms(hasTitle ? 12 : 48);
+        mBinding.widget.play.setText(data.format());
         setWidth(epg);
+        setMetadata();
     }
 
-    private void onXmlParsed(boolean success) {
-        if (mChannel != null && success) mViewModel.getEpg(mChannel);
+    private void setEpg(boolean success) {
+        if (mChannel != null && success)
+            mViewModel.getEpg(mChannel);
+    }
+
+    private void start(Result result, long startPositionMs) {
+        mPlaybackKey = result.getRealUrl();
+        startPlayer(mPlaybackKey, result, false, getHome().getTimeout(), startPositionMs, buildMetadata());
     }
 
     private void stopPlayer() {
         player().clear();
         player().stop();
-        checkControl();
     }
 
     @Override
@@ -681,58 +693,29 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     @Override
-    public boolean hasPlaybackSession() {
-        return mPlaybackKey != null && hasActivePlaybackSession();
-    }
-
-    @Override
-    public boolean isPlaybackServiceReady() {
-        return service() != null;
-    }
-
-    @Override
-    public void restorePlaybackKey(@Nullable String key) {
-        if (key == null || !player().hasPlaySpec() || !key.equals(player().getKey())) return;
-        updateNavigationKey(mPlaybackKey = key);
-    }
-
-    @Override
-    public long getPlayerPosition() {
-        return getActivePlaybackPosition();
-    }
-
-    @Override
     public ZoneId getZoneId() {
         return mViewModel.getZoneId();
     }
 
     @Override
-    public void onCatchupRequested() {
+    public void requestUrl(LivePlayRequest request) {
+        mViewModel.getUrl(request.getChannel(), request.getPosition());
+    }
+
+    @Override
+    public void requestCatchupUrl(LivePlayRequest request) {
+        mViewModel.getUrl(request.getChannel(), request.getCatchupData(), request.getPosition());
         hideUI();
     }
 
     @Override
-    public void preparePlaybackForRefresh() {
-        player().prepareForReplacement();
-    }
-
-    @Override
     public void stopPlaybackForRefresh() {
-        stopWebPlayback();
         stopPlayer();
     }
 
     @Override
-    public void startPlayback(Result result, long position, MediaMetadata metadata) {
-        mPlaybackKey = result.getRealUrl();
-        if (startWebPlayback(result)) return;
-        startPlayer(mPlaybackKey, result, false, getHome().getTimeout(), position, metadata);
-    }
-
-    private boolean startWebPlayback(Result result) {
-        if (!startWebPlayback(mBinding.video, result, mInput::onTouchEvent)) return false;
-        updateNavigationKey(mPlaybackKey);
-        return true;
+    public void startPlayback(Result result, long position, Channel channel) {
+        start(result, position);
     }
 
     @Override
@@ -768,19 +751,14 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     @Override
-    public void renderEpgSelection(EpgData data) {
+    public void renderEpgSelection(Channel channel, EpgData data) {
         mEpgDataAdapter.setSelected(data);
     }
 
     @Override
-    public void renderPlaybackMetadata(MediaMetadata metadata) {
-        if (service() != null && isOwner()) player().setMetadata(metadata);
-        mBinding.widget.name.setMaxEms(TextUtils.isEmpty(metadata.subtitle) ? 48 : 12);
-        mBinding.widget.play.setText(metadata.subtitle);
-        mBinding.control.title.setText(metadata.displayTitle);
-        mBinding.control.title.setSelected(true);
-        mBinding.control.subtitle.setText(metadata.subtitle);
-        mBinding.control.subtitle.setVisibility(TextUtils.isEmpty(metadata.subtitle) ? View.GONE : View.VISIBLE);
+    public void showCatchupReady(Channel channel, EpgData data) {
+        mBinding.control.title.setText(getString(R.string.detail_title, channel.getShow(), data.getTitle()));
+        Notify.show(getString(R.string.play_ready, data.getTitle()));
     }
 
     private void checkControl() {
@@ -794,8 +772,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     private void resetAdapter() {
         mBinding.control.action.line.setVisibility(View.GONE);
         mBinding.control.title.setText("");
-        mBinding.control.subtitle.setText("");
-        mBinding.control.subtitle.setVisibility(View.GONE);
         mEpgDataAdapter.clear();
         mChannelAdapter.clear();
         mGroupAdapter.clear();
@@ -805,44 +781,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     private final PlaybackService.NavigationCallback mNavigationCallback = new PlaybackService.NavigationCallback() {
-
-        @Override
-        public boolean canSetSpeed() {
-            return false;
-        }
-
-        @Override
-        public Boolean isKept() {
-            return mChannel == null || mGroup == null || mGroup.isHidden() ? null : Keep.exist(mChannel.getName());
-        }
-
-        @Override
-        public boolean onKeep() {
-            return isKept() != null && onLongClick(mChannel);
-        }
-
-        @Override
-        public boolean onPush(String url) {
-            if (isFinishing() || isDestroyed()) return false;
-            mLive.redirectPush(url);
-            return true;
-        }
-
-        @Override
-        public boolean isExternalPlaybackActive() {
-            return isWebPlaybackActive();
-        }
-
-        @Override
-        public void onPlay() {
-            LiveActivity.this.onPlay();
-        }
-
-        @Override
-        public void onPause() {
-            LiveActivity.this.onPaused();
-        }
-
         @Override
         public void onNext() {
             mLive.nextChannel();
@@ -855,13 +793,12 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
 
         @Override
         public void onStop() {
-            mLive.reset();
             finish();
         }
 
         @Override
         public void onAudio() {
-            Util.moveToBackground(LiveActivity.this);
+            moveTaskToBack(true);
             setAudioOnly(true);
         }
     };
@@ -869,7 +806,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     @Override
     protected void onPrepare() {
         setPlaybackMode();
-        checkControl();
     }
 
     @Override
@@ -888,14 +824,8 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     @Override
-    protected boolean onRefresh() {
-        mLive.refresh();
-        return true;
-    }
-
-    @Override
     protected void onReclaim() {
-        mLive.refresh();
+        mLive.reclaim(player().getPosition());
     }
 
     @Override
@@ -910,25 +840,26 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
                 player().reset();
                 break;
             case Player.STATE_ENDED:
-                if (isWebPlaybackActive()) onPlaybackEnded();
-                updatePlayControl(false);
+                mLive.playbackEnded();
                 break;
         }
     }
 
     @Override
-    protected void onPlaybackEnded() {
-        mLive.playbackEnded();
+    protected void onPlayingChanged(boolean isPlaying) {
+        if (isPlaying) {
+            mPiP.update(this, true);
+            mBinding.control.play.setImageResource(androidx.media3.ui.R.drawable.exo_icon_pause);
+        } else if (isPaused()) {
+            mPiP.update(this, false);
+            mBinding.control.play.setImageResource(androidx.media3.ui.R.drawable.exo_icon_play);
+        }
     }
 
     @Override
-    protected void onPlayingChanged(boolean isPlaying) {
-        if (isPlaying || isPaused() || isWebPlaybackActive()) updatePlayControl(isPlaying);
-    }
-
-    private void updatePlayControl(boolean isPlaying) {
-        mBinding.control.play.setImageResource(isPlaying ? androidx.media3.ui.R.drawable.exo_icon_pause : androidx.media3.ui.R.drawable.exo_icon_play);
-        mPiP.update(this, isPlaying);
+    public void onSubtitleClick() {
+        SubtitleDialog.create().view(mBinding.player.getSubtitleView()).player(player()).show(this);
+        hideControl();
     }
 
     @Override
@@ -994,42 +925,24 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         }
     }
 
-    private void refreshKeeps() {
-        if (mGroupAdapter.getItemCount() == 0 || !getKeep().isKeep()) return;
-        List<Group> groups = new ArrayList<>();
-        for (int i = 0; i < mGroupAdapter.getItemCount(); i++) groups.add(mGroupAdapter.get(i));
-        getKeep().getChannel().clear();
-        LiveConfig.get().applyKeepsToGroups(groups);
-        if (mGroup != null && mGroup.isKeep()) mChannelAdapter.addAll(getKeep().getChannel());
-    }
-
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onRefreshEvent(RefreshEvent event) {
         switch (event.getType()) {
             case LIVE -> setLive(getHome());
-            case KEEP -> refreshKeeps();
-            case PLAYER -> mLive.refresh();
-        }
-    }
-
-    @Override
-    protected void onWebProgressChanged(boolean visible) {
-        if (visible) showProgress();
-        else hideProgress();
-    }
-
-    @Override
-    protected void onWebPlaybackChanged(boolean active) {
-        PlaybackAction.setWebPlaybackMode(active, mBinding.control.action.player, mBinding.control.action.decoder, mBinding.control.action.speed, mBinding.control.action.scale, mBinding.control.action.text, mBinding.control.action.audio, mBinding.control.action.video);
-        if (!active) {
-            setPlaybackMode();
-            setTrackVisible();
+            case PLAYER -> mLive.refresh(player().getPosition());
         }
     }
 
     private void setTrackVisible() {
-        if (isWebPlaybackActive()) return;
         PlaybackAction.setTracks(player(), mBinding.control.action.text, mBinding.control.action.audio, mBinding.control.action.video, mBinding.control.action.speed);
+    }
+
+    private MediaMetadata buildMetadata() {
+        return LivePlaybackMedia.metadata(mChannel, mBinding.widget.play.getText());
+    }
+
+    private void setMetadata() {
+        player().setMetadata(buildMetadata());
     }
 
     private void prevChannel() {
@@ -1045,12 +958,10 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     private void onPaused() {
-        if (pauseWebPlayback()) return;
         controller().pause();
     }
 
     private void onPlay() {
-        if (resumeWebPlayback()) return;
         controller().play();
     }
 
@@ -1079,15 +990,18 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     @Override
-    public boolean onSpeedPressStart() {
-        if (player().isLive()) return false;
-        if (!player().isPlaying()) return false;
-        return PlaybackAction.startSpeedPress(player(), mBinding.widget.message);
+    public void onSpeedUp() {
+        if (player().isLive()) return;
+        if (!player().isPlaying()) return;
+        mBinding.widget.speed.setVisibility(View.VISIBLE);
+        mBinding.widget.speed.startAnimation(ResUtil.getAnim(R.anim.forward));
+        PlaybackAction.setSpeed(player(), mBinding.control.action.speed, PlayerSetting.getSpeed());
     }
 
     @Override
-    public void onSpeedPressEnd() {
-        PlaybackAction.endSpeedPress(player(), mBinding.widget.message);
+    public void onSpeedEnd() {
+        mBinding.widget.speed.clearAnimation();
+        PlaybackAction.setSpeed(player(), mBinding.control.action.speed, 1.0f);
     }
 
     @Override
@@ -1109,22 +1023,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     }
 
     @Override
-    public boolean isScaleEnabled() {
-        return !isInPictureInPictureMode();
-    }
-
-    @Override
-    public void onPinchScale(float scaleX, float scaleY) {
-        if (!mScaleFeedback.isActive()) PlaybackAction.hideSpeedHint(mBinding.widget.message);
-        mScaleFeedback.show(scaleX, scaleY);
-    }
-
-    @Override
-    public void onPinchScaleEnd() {
-        mScaleFeedback.hide();
-    }
-
-    @Override
     public void onFlingUp() {
         if (LiveSetting.isInvert()) nextChannel();
         else prevChannel();
@@ -1138,16 +1036,16 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
 
     @Override
     public void onSeeking(long time) {
-        if (!player().canSeek()) return;
-        mBinding.widget.statusIcon.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
-        setSeekPreviewTime(mBinding.widget.time, time);
+        if (player().isLive()) return;
+        mBinding.widget.action.setImageResource(time > 0 ? R.drawable.ic_widget_forward : R.drawable.ic_widget_rewind);
+        mBinding.widget.time.setText(player().getPositionTime(time));
         mBinding.widget.seek.setVisibility(View.VISIBLE);
         hideProgress();
     }
 
     @Override
     public void onSeekEnd(long time) {
-        if (!player().canSeek()) return;
+        if (player().isLive()) return;
         seekTo(time);
     }
 
@@ -1166,9 +1064,15 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
     @Override
     public void onTouchEnd() {
         mBinding.widget.seek.setVisibility(View.GONE);
+        mBinding.widget.speed.setVisibility(View.GONE);
         mBinding.widget.bright.setVisibility(View.GONE);
         mBinding.widget.volume.setVisibility(View.GONE);
-        PlaybackAction.hideSpeedHint(mBinding.widget.message);
+    }
+
+    @Override
+    public void onShare(CharSequence title) {
+        PlayerHelper.share(this, player().getUrl(), player().getHeaders(), title);
+        setRedirect(true);
     }
 
     @Override
@@ -1176,9 +1080,7 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
         super.onUserLeaveHint();
         if (isRedirect()) return;
         if (isLock()) App.post(this::onLock, 500);
-        if (service() == null) return;
-        if (hasWebMediaTarget()) mPiP.enter(this, getWebVideoWidth(), getWebVideoHeight());
-        else if (!isWebPlaybackActive() && player().haveTrack(C.TRACK_TYPE_VIDEO)) mPiP.enter(this, player().getVideoWidth(), player().getVideoHeight());
+        if (service() != null && player().haveTrack(C.TRACK_TYPE_VIDEO)) mPiP.enter(this, player().getVideoWidth(), player().getVideoHeight(), LiveSetting.getScale());
     }
 
     @Override
@@ -1227,8 +1129,6 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
             hideInfo();
         } else if (isVisible(mBinding.recycler)) {
             hideUI();
-        } else if (handleWebViewNavigation()) {
-            return;
         } else if (!isLock()) {
             if (isTaskRoot()) startActivity(new Intent(this, HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
             super.onBackInvoked();
@@ -1237,7 +1137,7 @@ public class LiveActivity extends PlaybackActivity implements TouchInput.Listene
 
     @Override
     protected void onDestroy() {
-        if (isBindingOwner() && isOwner()) Source.get().exit();
+        Source.get().exit();
         App.removeCallbacks(mR1, mR2, mR3);
         super.onDestroy();
     }

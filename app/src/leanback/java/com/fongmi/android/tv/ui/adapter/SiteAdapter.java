@@ -85,8 +85,8 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
 
     private void setListener(Site item, int position) {
         if (type == 0) listener.onItemClick(item);
-        if (type == 1) item.setSearchable(!item.isSearchable()).saveSettings();
-        if (type == 2) item.setChangeable(!item.isChangeable()).saveSettings();
+        if (type == 1) item.setSearchable(!item.isSearchable()).save();
+        if (type == 2) item.setChangeable(!item.isChangeable()).save();
         if (type != 0) notifyItemChanged(position);
     }
 
@@ -97,9 +97,8 @@ public class SiteAdapter extends RecyclerView.Adapter<SiteAdapter.ViewHolder> {
     }
 
     private void setEnable(boolean enable) {
-        if (type == 1) for (Site site : mItems) site.setSearchable(enable);
-        if (type == 2) for (Site site : mItems) site.setChangeable(enable);
-        if (type == 1 || type == 2) Site.saveSettings(mItems);
+        if (type == 1) for (Site site : mItems) site.setSearchable(enable).save();
+        if (type == 2) for (Site site : mItems) site.setChangeable(enable).save();
         notifyItemRangeChanged(0, getItemCount());
     }
 

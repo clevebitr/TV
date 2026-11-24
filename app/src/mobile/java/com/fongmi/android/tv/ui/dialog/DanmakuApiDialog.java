@@ -8,14 +8,14 @@ import androidx.fragment.app.Fragment;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
-import com.fongmi.android.tv.databinding.DialogSingleInputBinding;
+import com.fongmi.android.tv.databinding.DialogUaBinding;
 import com.fongmi.android.tv.impl.DanmakuListener;
 import com.fongmi.android.tv.setting.DanmakuSetting;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class DanmakuApiDialog extends BaseAlertDialog {
 
-    private DialogSingleInputBinding binding;
+    private DialogUaBinding binding;
 
     public static void show(Fragment fragment) {
         new DanmakuApiDialog().show(fragment.getChildFragmentManager(), null);
@@ -23,7 +23,7 @@ public class DanmakuApiDialog extends BaseAlertDialog {
 
     @Override
     protected ViewBinding getBinding() {
-        return binding = DialogSingleInputBinding.inflate(getLayoutInflater());
+        return binding = DialogUaBinding.inflate(getLayoutInflater());
     }
 
     @Override
@@ -47,13 +47,7 @@ public class DanmakuApiDialog extends BaseAlertDialog {
     }
 
     private void onPositive(DialogInterface dialog, int which) {
-        getListener().setDanmakuApi(binding.text.getText().toString().trim());
+        ((DanmakuListener) requireParentFragment()).setDanmakuApi(binding.text.getText().toString().trim());
         dismiss();
-    }
-
-    private DanmakuListener getListener() {
-        Fragment parent = getParentFragment();
-        if (parent instanceof DanmakuListener) return (DanmakuListener) parent;
-        return (DanmakuListener) requireActivity();
     }
 }

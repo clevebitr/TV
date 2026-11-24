@@ -13,7 +13,6 @@ import org.jupnp.transport.spi.StreamServer;
 import org.jupnp.transport.spi.StreamServerConfiguration;
 import org.jupnp.transport.spi.UpnpStream;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -26,21 +25,13 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServer.Configuration> {
 
-    private static final int MAX_BODY_BYTES = 1024 * 1024;
-    private static final int MAX_HEADER_BYTES = 64 * 1024;
-    private static final int MAX_LINE_BYTES = 8 * 1024;
-
     private final Configuration configuration;
-    private final Set<Socket> sockets = new HashSet<>();
     private ServerSocket serverSocket;
     private volatile boolean stopped;
     private Router router;
@@ -73,11 +64,7 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
 
     @Override
     public void stop() {
-        synchronized (sockets) {
-            stopped = true;
-            for (Socket socket : sockets) closeSocket(socket);
-            sockets.clear();
-        }
+        stopped = true;
         try {
             if (serverSocket != null) serverSocket.close();
         } catch (IOException ignored) {
@@ -87,45 +74,18 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
     @Override
     public void run() {
         while (!stopped) {
-            Socket socket = null;
             try {
-                socket = serverSocket.accept();
-                if (!dispatchSocket(socket)) break;
-                socket = null;
+                Socket socket = serverSocket.accept();
+                socket.setSoTimeout(30_000);
+                router.received(new SocketUpnpStream(router.getProtocolFactory(), socket));
             } catch (SocketException e) {
                 break;
             } catch (IOException ignored) {
-            } finally {
-                if (socket != null) releaseSocket(socket);
             }
         }
     }
 
-    private static void closeSocket(Socket socket) {
-        try {
-            socket.close();
-        } catch (IOException ignored) {
-        }
-    }
-
-    private boolean dispatchSocket(Socket socket) throws IOException {
-        synchronized (sockets) {
-            if (stopped) return false;
-            sockets.add(socket);
-        }
-        socket.setSoTimeout(30_000);
-        router.received(new SocketUpnpStream(router.getProtocolFactory(), socket));
-        return true;
-    }
-
-    private void releaseSocket(Socket socket) {
-        synchronized (sockets) {
-            sockets.remove(socket);
-        }
-        closeSocket(socket);
-    }
-
-    private class SocketUpnpStream extends UpnpStream {
+    private static class SocketUpnpStream extends UpnpStream {
 
         private final Socket socket;
 
@@ -144,10 +104,9 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
                     return sb.toString();
                 }
                 sb.append((char) b);
-                if (sb.length() > MAX_LINE_BYTES) throw new IOException("HTTP line too long");
                 prev = b;
             }
-            throw new EOFException("Truncated HTTP line");
+            return sb.toString();
         }
 
         private void writeStatusLine(OutputStream os, int code, String reason) throws IOException {
@@ -165,45 +124,38 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
         @Override
         public void run() {
             try {
-                StreamRequestMessage request = readRequest();
-                if (request == null) return;
-                sendResponse(process(request));
+                InputStream is = socket.getInputStream();
+                String requestLine = readLine(is);
+                String[] parts = requestLine.split(" ", 3);
+                if (requestLine.isEmpty() || parts.length < 2) {
+                    socket.close();
+                    return;
+                }
+                Map<String, List<String>> headers = readHeaders(is);
+                StreamRequestMessage requestMessage = buildRequestMessage(parts[0], parts[1], headers);
+                readBodyInto(is, requestMessage, headers);
+                StreamResponseMessage responseMessage = process(requestMessage);
+                OutputStream os = socket.getOutputStream();
+                writeResponse(os, responseMessage);
+                os.flush();
+                responseSent(responseMessage);
             } catch (Exception e) {
                 responseException(e);
             } finally {
-                synchronized (sockets) {
-                    sockets.remove(socket);
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
                 }
-                closeSocket(socket);
             }
-        }
-
-        private StreamRequestMessage readRequest() throws IOException {
-            InputStream is = socket.getInputStream();
-            String requestLine = readLine(is);
-            String[] parts = requestLine.split(" ", 3);
-            if (requestLine.isEmpty() || parts.length < 2) return null;
-            Map<String, List<String>> headers = readHeaders(is);
-            StreamRequestMessage request = buildRequestMessage(parts[0], parts[1], headers);
-            readBodyInto(is, request, headers);
-            return request;
-        }
-
-        private void sendResponse(StreamResponseMessage response) throws IOException {
-            OutputStream os = socket.getOutputStream();
-            writeResponse(os, response);
-            os.flush();
-            responseSent(response);
         }
 
         private Map<String, List<String>> readHeaders(InputStream is) throws IOException {
             Map<String, List<String>> headers = new HashMap<>();
             String line;
-            int size = 0;
             while (!(line = readLine(is)).isEmpty()) {
-                size += line.length() + 2;
-                if (size > MAX_HEADER_BYTES) throw new IOException("HTTP headers too large");
-                addHeader(headers, line);
+                int colon = line.indexOf(':');
+                if (colon < 0) continue;
+                headers.computeIfAbsent(line.substring(0, colon).trim().toLowerCase(), k -> new ArrayList<>()).add(line.substring(colon + 1).trim());
             }
             return headers;
         }
@@ -216,34 +168,15 @@ public class SocketHttpStreamServer implements StreamServer<SocketHttpStreamServ
         }
 
         private void readBodyInto(InputStream is, StreamRequestMessage msg, Map<String, List<String>> headers) throws IOException {
-            int len = readContentLength(headers);
-            if (len == 0) return;
+            List<String> length = headers.getOrDefault("content-length", List.of());
+            if (length == null || length.isEmpty()) return;
+            int len = Integer.parseInt(length.get(0).trim());
+            if (len <= 0) return;
             byte[] body = new byte[len];
             int offset = 0, read;
             while (offset < len && (read = is.read(body, offset, len - offset)) != -1) offset += read;
-            if (offset != len) throw new EOFException("Truncated HTTP body");
             if (msg.isContentTypeMissingOrText()) msg.setBodyCharacters(body);
             else msg.setBody(UpnpMessage.BodyType.BYTES, body);
-        }
-
-        private void addHeader(Map<String, List<String>> headers, String line) {
-            int colon = line.indexOf(':');
-            if (colon < 0) return;
-            headers.computeIfAbsent(line.substring(0, colon).trim().toLowerCase(Locale.ROOT), k -> new ArrayList<>()).add(line.substring(colon + 1).trim());
-        }
-
-        private int readContentLength(Map<String, List<String>> headers) throws IOException {
-            List<String> length = headers.getOrDefault("content-length", List.of());
-            if (headers.containsKey("transfer-encoding")) throw new IOException("Unsupported Transfer-Encoding");
-            if (length.isEmpty()) return 0;
-            long declared;
-            try {
-                declared = Long.parseLong(length.get(0));
-            } catch (NumberFormatException e) {
-                throw new IOException("Invalid Content-Length", e);
-            }
-            if (length.size() != 1 || declared < 0 || declared > MAX_BODY_BYTES) throw new IOException("Invalid Content-Length");
-            return (int) declared;
         }
 
         private void writeResponse(OutputStream os, StreamResponseMessage msg) throws IOException {

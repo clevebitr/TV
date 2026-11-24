@@ -7,8 +7,6 @@ import androidx.collection.ArrayMap;
 import com.github.catvod.net.interceptor.AuthInterceptor;
 import com.github.catvod.net.interceptor.RequestInterceptor;
 import com.github.catvod.net.interceptor.ResponseInterceptor;
-import com.github.catvod.utils.Auth;
-import com.google.common.net.HttpHeaders;
 
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
@@ -87,20 +85,6 @@ public class OkHttp {
         return get().player = getBuilder().build();
     }
 
-    public static Call.Factory player(Auth.Context auth) {
-        OkHttpClient client = player();
-        return auth == null ? client : request -> client.newCall(applyAuth(request, auth));
-    }
-
-    static Request applyAuth(Request request, Auth.Context auth) {
-        String authorization = request.header(HttpHeaders.AUTHORIZATION);
-        Map<String, String> headers = authorization == null ? Map.of() : Map.of(HttpHeaders.AUTHORIZATION, authorization);
-        String url = auth.getUrl(request.url().toString(), headers);
-        Request.Builder builder = request.newBuilder().url(url).tag(Auth.Context.class, auth);
-        auth.getHeaders(url, headers).forEach(builder::header);
-        return builder.build();
-    }
-
     public static OkHttpClient client(long timeout) {
         return client().newBuilder().connectTimeout(timeout, TimeUnit.MILLISECONDS).readTimeout(timeout, TimeUnit.MILLISECONDS).writeTimeout(timeout, TimeUnit.MILLISECONDS).build();
     }
@@ -110,9 +94,7 @@ public class OkHttp {
     }
 
     public static OkHttpClient noRedirect(long timeout) {
-        OkHttpClient.Builder builder = client().newBuilder().connectTimeout(timeout, TimeUnit.MILLISECONDS).readTimeout(timeout, TimeUnit.MILLISECONDS).writeTimeout(timeout, TimeUnit.MILLISECONDS).followRedirects(false).followSslRedirects(false);
-        builder.interceptors().removeIf(item -> item instanceof ProxyRedirectInterceptor);
-        return builder.build();
+        return client().newBuilder().connectTimeout(timeout, TimeUnit.MILLISECONDS).readTimeout(timeout, TimeUnit.MILLISECONDS).writeTimeout(timeout, TimeUnit.MILLISECONDS).followRedirects(false).followSslRedirects(false).build();
     }
 
     public static OkHttpClient client(boolean redirect, long timeout) {
@@ -157,10 +139,6 @@ public class OkHttp {
 
     public static Call newCall(String url, Map<String, String> headers) {
         return client().newCall(new Request.Builder().url(url).headers(Headers.of(headers)).build());
-    }
-
-    public static Call newCall(String url, Map<String, String> headers, Auth.Context auth) {
-        return client().newCall(new Request.Builder().url(url).headers(Headers.of(headers)).tag(Auth.Context.class, auth).build());
     }
 
     public static Call newCall(String url, Map<String, String> headers, ArrayMap<String, String> params) {
@@ -209,12 +187,11 @@ public class OkHttp {
     }
 
     private static OkHttpClient.Builder getBuilder() {
-        OkProxySelector selector = selector();
-        OkHttpClient.Builder builder = new OkHttpClient.Builder().addInterceptor(requestInterceptor()).addInterceptor(authInterceptor()).addInterceptor(new ProxyRedirectInterceptor(selector)).addNetworkInterceptor(responseInterceptor()).connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(TIMEOUT, TimeUnit.MILLISECONDS).writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS).dns(dns()).hostnameVerifier((hostname, session) -> true).sslSocketFactory(getSSLContext().getSocketFactory(), trustAllCertificates()).followRedirects(false);
+        OkHttpClient.Builder builder = new OkHttpClient.Builder().addInterceptor(requestInterceptor()).addInterceptor(authInterceptor()).addNetworkInterceptor(responseInterceptor()).connectTimeout(TIMEOUT, TimeUnit.MILLISECONDS).readTimeout(TIMEOUT, TimeUnit.MILLISECONDS).writeTimeout(TIMEOUT, TimeUnit.MILLISECONDS).dns(dns()).hostnameVerifier((hostname, session) -> true).sslSocketFactory(getSSLContext().getSocketFactory(), trustAllCertificates());
         HttpLoggingInterceptor logging = new HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY);
         builder.proxyAuthenticator(authenticator());
         //builder.addNetworkInterceptor(logging);
-        builder.proxySelector(selector);
+        builder.proxySelector(selector());
         return builder;
     }
 

@@ -8,9 +8,9 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 
 import com.fongmi.android.tv.App;
-import com.fongmi.android.tv.player.track.TrackUtil;
+import com.fongmi.android.tv.player.util.PlayerHelper;
+import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.utils.Trans;
-import com.github.catvod.utils.UriUtil;
 import com.google.gson.annotations.SerializedName;
 
 public class Sub {
@@ -26,16 +26,12 @@ public class Sub {
     @SerializedName("flag")
     private int flag;
 
-    public static Sub from(String url) {
-        return from(UriUtil.path(url), url);
-    }
-
-    public static Sub from(String name, String url) {
+    public static Sub from(String path) {
         Sub sub = new Sub();
-        sub.url = url;
-        sub.name = name;
+        sub.url = path;
+        sub.name = UrlUtil.path(path);
         sub.flag = C.SELECTION_FLAG_FORCED;
-        sub.format = TrackUtil.getSubtitleMimeType(sub.name);
+        sub.format = PlayerHelper.getSubtitleMimeType(sub.name);
         return sub;
     }
 
@@ -81,11 +77,11 @@ public class Sub {
     }
 
     public boolean isEmpty() {
-        return url == null || url.isEmpty();
+        return getUrl().isEmpty();
     }
 
     public Uri getUri() {
-        return isEmpty() ? null : UriUtil.uri(getUrl());
+        return isEmpty() ? null : UrlUtil.uri(getUrl());
     }
 
     public void trans() {

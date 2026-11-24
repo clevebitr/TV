@@ -128,17 +128,11 @@ public class Flag implements Parcelable, Diffable<Flag> {
     public Episode find(String remarks, boolean strict) {
         if (getEpisodes().isEmpty()) return null;
         if (getEpisodes().size() == 1) return getEpisodes().get(0);
-        Episode episode = findByName(remarks);
-        if (episode != null) return episode;
-        return isPositionValid() ? getEpisodes().get(getPosition()) : strict ? null : getEpisodes().get(0);
-    }
-
-    public Episode findByName(String name) {
-        int number = Util.getNumber(name);
+        int number = Util.getNumber(remarks);
         return getEpisodes().stream()
-                .map(episode -> new Episode.Rule(episode, episode.getScore(name, number)))
+                .map(episode -> new Episode.Rule(episode, episode.getScore(remarks, number)))
                 .filter(Episode.Rule::find).max(Comparator.comparingInt(Episode.Rule::score)).map(Episode.Rule::episode)
-                .orElse(null);
+                .orElseGet(() -> isPositionValid() ? getEpisodes().get(getPosition()) : strict ? null : getEpisodes().get(0));
     }
 
     private boolean isPositionValid() {
@@ -146,13 +140,11 @@ public class Flag implements Parcelable, Diffable<Flag> {
     }
 
     public void mergeEpisodes(List<Episode> items, boolean rev) {
-        Episode current = isPositionValid() ? getEpisodes().get(getPosition()) : null;
         for (Episode item : items) {
             if (getEpisodes().contains(item)) continue;
             if (rev) getEpisodes().add(0, item);
             else getEpisodes().add(item);
         }
-        if (rev && current != null) setPosition(getEpisodes().indexOf(current));
     }
 
     public Flag trans() {

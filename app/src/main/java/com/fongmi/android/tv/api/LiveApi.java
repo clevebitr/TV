@@ -4,7 +4,6 @@ import androidx.annotation.NonNull;
 
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.api.config.LiveConfig;
-import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.api.parser.EpgParser;
 import com.fongmi.android.tv.api.parser.LiveParser;
 import com.fongmi.android.tv.bean.Channel;
@@ -31,40 +30,29 @@ public class LiveApi {
     }
 
     public static boolean parseXml(@NonNull Live item) {
-        boolean parsed = false;
-        for (String url : item.getEpgXml()) parsed |= startXml(item, url);
-        return parsed;
+        return item.getEpgXml().stream().map(url -> startXml(item, url)).reduce(false, Boolean::logicalOr);
     }
 
     @NonNull
     public static Epg getEpg(@NonNull Channel item, @NonNull ZoneId zoneId) {
-        for (int offset = -1; offset <= 1; offset++) fetchEpgDay(item, zoneId, offset);
-        return item.getData(zoneId).selected();
+        String today = LocalDate.now(zoneId).format(Formatters.DATE);
+        for (int offset : new int[]{-1, 0, 1}) fetchEpgDay(item, zoneId, offset);
+        return item.getDataList().stream().filter(epg -> epg.equal(today)).findFirst().orElseGet(Epg::new).selected();
     }
 
     @NonNull
     public static Result getUrl(@NonNull Channel item) throws Exception {
-        Result result = resolveUrl(item);
-        item.applyAuth(result);
+        Source.get().stop();
+        Result result = item.result();
+        result.setUrl(Source.get().fetch(result));
         return result;
     }
 
     @NonNull
     public static Result getUrl(@NonNull Channel item, @NonNull EpgData data) throws Exception {
-        Result result = resolveUrl(item);
-        if (Source.isPush(result.getUrl().v())) return result;
-        result.setTimeshift(null);
+        Result result = getUrl(item);
         result.setUrl(item.getCatchup().format(result.getRealUrl(), data));
-        BaseLoader.get().requireProxy(result.getRealUrl());
         if (item.isRtsp()) result.getHeader().put("rtsp_range", data.getRange());
-        item.applyAuth(result);
-        return result;
-    }
-
-    private static Result resolveUrl(Channel item) throws Exception {
-        Source.get().stop();
-        Result result = item.result();
-        result.setUrl(Source.get().fetch(result));
         return result;
     }
 
@@ -82,6 +70,6 @@ public class LiveApi {
         String date = LocalDate.now(zoneId).plusDays(offset).format(Formatters.DATE);
         String url = item.getEpg().replace("{date}", date);
         boolean need = url.startsWith("http") && item.getDataList().stream().noneMatch(epg -> epg.equal(date));
-        if (need) item.setData(Epg.objectFrom(OkHttp.string(url), item.getTvgId(), date, zoneId));
+        if (need) item.setData(Epg.objectFrom(OkHttp.string(url), item.getTvgId(), zoneId));
     }
 }

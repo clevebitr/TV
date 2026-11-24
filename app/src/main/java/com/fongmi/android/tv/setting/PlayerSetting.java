@@ -1,84 +1,75 @@
 package com.fongmi.android.tv.setting;
 
-import static androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL;
-import static androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT;
-import static androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM;
+import android.content.Intent;
+import android.provider.Settings;
 
-import androidx.annotation.Nullable;
-import androidx.media3.common.C;
-import androidx.media3.common.DecoderMode;
-
+import com.fongmi.android.tv.App;
 import com.github.catvod.utils.Prefers;
-import com.github.catvod.utils.RuntimeModule;
 
 public class PlayerSetting {
 
     public static final int ENGINE_EXO = 0;
     public static final int ENGINE_MPV = 1;
+    public static final int RENDER_SURFACE = 0;
+    public static final int RENDER_TEXTURE = 1;
     public static final int MIN_SCALE = 0;
-    public static final int MAX_SCALE = 2;
+    public static final int MAX_SCALE = 4;
     private static final int MIN_SIZE = 0;
     private static final int MAX_SIZE = 3;
-    private static final int MIN_BUFFER = 1;
-    private static final int MAX_BUFFER = 10;
     private static final int MIN_BACKGROUND = 0;
     private static final int MAX_BACKGROUND = 2;
+    private static final float MIN_SPEED = 2.0f;
+    private static final float MAX_SPEED = 5.0f;
 
     public static int getEngine() {
-        return Math.clamp(Prefers.getInt("player_engine", ENGINE_EXO), ENGINE_EXO, getEngineCount() - 1);
-    }
-
-    public static int getEngineCount() {
-        return RuntimeModule.MPV.isInstalled() ? ENGINE_MPV + 1 : ENGINE_EXO + 1;
+        return Math.clamp(Prefers.getInt("player_engine", ENGINE_EXO), ENGINE_EXO, ENGINE_MPV);
     }
 
     public static void putEngine(int engine) {
         Prefers.put("player_engine", Math.clamp(engine, ENGINE_EXO, ENGINE_MPV));
-        if (isExo() && OutputSetting.isTunnel()) OutputSetting.putRender(OutputSetting.RENDER_SURFACE);
-    }
-
-    public static boolean isExo() {
-        return getEngine() == ENGINE_EXO;
+        if (!isMpv() && isTunnel()) Prefers.put("render", RENDER_SURFACE);
     }
 
     public static boolean isMpv() {
         return getEngine() == ENGINE_MPV;
     }
 
-    public static DecoderMode getDecoderMode(int engine, @C.TrackType int trackType) {
-        String key = getDecoderModeKey(engine, trackType);
-        if (key == null) return DecoderMode.AUTO;
-        String value = Prefers.getString(key);
-        for (DecoderMode mode : DecoderMode.values()) if (mode.name().equals(value) && isDecoderModeSupported(engine, mode)) return mode;
-        return DecoderMode.AUTO;
+    public static boolean isMpvGpuNext() {
+        return Prefers.getBoolean("mpv_gpu_next");
     }
 
-    public static void putDecoderMode(int engine, @C.TrackType int trackType, DecoderMode mode) {
-        String key = getDecoderModeKey(engine, trackType);
-        if (key != null && isDecoderModeSupported(engine, mode)) Prefers.put(key, mode.name());
+    public static void putMpvGpuNext(boolean gpuNext) {
+        Prefers.put("mpv_gpu_next", gpuNext);
     }
 
-    @Nullable
-    private static String getDecoderModeKey(int engine, @C.TrackType int trackType) {
-        if (engine == ENGINE_MPV) return trackType == C.TRACK_TYPE_VIDEO ? "decode_mpv_video_mode" : null;
-        if (engine != ENGINE_EXO) return null;
-        return switch (trackType) {
-            case C.TRACK_TYPE_AUDIO -> "decode_exo_audio_mode";
-            case C.TRACK_TYPE_VIDEO -> "decode_exo_video_mode";
-            default -> null;
-        };
+    public static boolean isMpvVulkan() {
+        return Prefers.getBoolean("mpv_vulkan");
     }
 
-    private static boolean isDecoderModeSupported(int engine, DecoderMode mode) {
-        return engine != ENGINE_MPV || mode != DecoderMode.SOFTWARE;
+    public static void putMpvVulkan(boolean vulkan) {
+        Prefers.put("mpv_vulkan", vulkan);
     }
 
-    public static boolean isDebug() {
-        return Prefers.getBoolean("player_debug");
+    public static int getRender() {
+        return Math.clamp(Prefers.getInt("render", RENDER_SURFACE), RENDER_SURFACE, RENDER_TEXTURE);
     }
 
-    public static void putDebug(boolean debug) {
-        Prefers.put("player_debug", debug);
+    public static void putRender(int render) {
+        Prefers.put("render", Math.clamp(render, RENDER_SURFACE, RENDER_TEXTURE));
+        if (!isMpv() && isTunnel() && getRender() == RENDER_TEXTURE) Prefers.put("tunnel", false);
+    }
+
+    public static boolean isTunnel() {
+        return Prefers.getBoolean("tunnel");
+    }
+
+    public static void putTunnel(boolean tunnel) {
+        Prefers.put("tunnel", tunnel);
+        if (!isMpv() && tunnel) Prefers.put("render", RENDER_SURFACE);
+    }
+
+    public static boolean isTunnelingEnabled() {
+        return isTunnel() && getRender() == RENDER_SURFACE;
     }
 
     public static int getSize() {
@@ -95,10 +86,6 @@ public class PlayerSetting {
 
     public static void putScale(int scale) {
         Prefers.put("scale", Math.clamp(scale, MIN_SCALE, MAX_SCALE));
-    }
-
-    public static int getScaleMode(int index) {
-        return index == 1 ? RESIZE_MODE_FILL : index == 2 ? RESIZE_MODE_ZOOM : RESIZE_MODE_FIT;
     }
 
     public static int getBackground() {
@@ -121,11 +108,79 @@ public class PlayerSetting {
         return getBackground() == 2;
     }
 
-    public static int getBuffer() {
-        return Math.clamp(Prefers.getInt("buffer"), MIN_BUFFER, MAX_BUFFER);
+    public static float getSpeed() {
+        return Math.clamp(Prefers.getFloat("speed", 3), MIN_SPEED, MAX_SPEED);
     }
 
-    public static void putBuffer(int buffer) {
-        Prefers.put("buffer", Math.clamp(buffer, MIN_BUFFER, MAX_BUFFER));
+    public static void putSpeed(float speed) {
+        Prefers.put("speed", Math.clamp(speed, MIN_SPEED, MAX_SPEED));
+    }
+
+    public static boolean isCaption() {
+        return Prefers.getBoolean("caption");
+    }
+
+    public static void putCaption(boolean caption) {
+        Prefers.put("caption", caption);
+    }
+
+    public static float getSubtitleTextSize() {
+        return Prefers.getFloat("subtitle_text_size");
+    }
+
+    public static void putSubtitleTextSize(float value) {
+        Prefers.put("subtitle_text_size", value);
+    }
+
+    public static float getSubtitlePosition() {
+        return Prefers.getFloat("subtitle_position");
+    }
+
+    public static void putSubtitlePosition(float value) {
+        Prefers.put("subtitle_position", value);
+    }
+
+    public static boolean hasCaption() {
+        return new Intent(Settings.ACTION_CAPTIONING_SETTINGS).resolveActivity(App.get().getPackageManager()) != null;
+    }
+
+    public static boolean isAudioPassThrough() {
+        return Prefers.getBoolean("audio_pass_through", true);
+    }
+
+    public static void putAudioPassThrough(boolean audioPassThrough) {
+        Prefers.put("audio_pass_through", audioPassThrough);
+    }
+
+    public static boolean isAudioPrefer() {
+        return Prefers.getBoolean("audio_prefer");
+    }
+
+    public static void putAudioPrefer(boolean audioPrefer) {
+        Prefers.put("audio_prefer", audioPrefer);
+    }
+
+    public static boolean isVideoPrefer() {
+        return Prefers.getBoolean("video_prefer");
+    }
+
+    public static void putVideoPrefer(boolean videoPrefer) {
+        Prefers.put("video_prefer", videoPrefer);
+    }
+
+    public static boolean isPreferAAC() {
+        return Prefers.getBoolean("prefer_aac");
+    }
+
+    public static void putPreferAAC(boolean preferAAC) {
+        Prefers.put("prefer_aac", preferAAC);
+    }
+
+    public static boolean isDv7HevcFallback() {
+        return Prefers.getBoolean("dv7_hevc_fallback");
+    }
+
+    public static void putDv7HevcFallback(boolean fallback) {
+        Prefers.put("dv7_hevc_fallback", fallback);
     }
 }

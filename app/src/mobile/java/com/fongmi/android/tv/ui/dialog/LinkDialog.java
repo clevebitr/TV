@@ -1,8 +1,8 @@
 package com.fongmi.android.tv.ui.dialog;
 
+import android.app.Activity;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.net.Uri;
 import android.text.InputFilter;
 import android.text.TextUtils;
 import android.view.View;
@@ -10,7 +10,6 @@ import android.view.inputmethod.EditorInfo;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.widget.TooltipCompat;
 import androidx.fragment.app.Fragment;
 import androidx.viewbinding.ViewBinding;
 
@@ -50,7 +49,6 @@ public class LinkDialog extends BaseAlertDialog {
     @Override
     protected void initEvent() {
         binding.input.setEndIconOnClickListener(this::onChoose);
-        TooltipCompat.setTooltipText(binding.input.findViewById(com.google.android.material.R.id.text_input_end_icon), binding.input.getEndIconContentDescription());
         binding.text.setOnEditorActionListener((textView, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_DONE) onPositive(null, 0);
             return true;
@@ -67,11 +65,9 @@ public class LinkDialog extends BaseAlertDialog {
         dismiss();
     }
 
-    private final ActivityResultLauncher<Intent> launcher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> FileChooser.getUri(result, this::openFile));
-
-    private void openFile(Uri uri) {
-        if (!isAdded()) return;
-        VideoActivity.file(requireActivity(), uri);
+    private final ActivityResultLauncher<Intent> launcher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null) return;
+        VideoActivity.file(requireActivity(), FileChooser.getPathFromUri(result.getData().getData()));
         dismiss();
-    }
+    });
 }

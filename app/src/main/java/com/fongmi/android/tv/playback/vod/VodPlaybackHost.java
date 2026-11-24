@@ -1,11 +1,10 @@
 package com.fongmi.android.tv.playback.vod;
 
-import androidx.media3.common.MediaMetadata;
-
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Result;
+import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Vod;
 
 import java.util.List;
@@ -16,23 +15,13 @@ public interface VodPlaybackHost {
 
     String getVodId();
 
-    void setVodId(String id);
-
     String getVodName();
 
     String getVodPic();
 
     String getVodMark();
 
-    String getVodPlayId();
-
-    void clearVodPlayId();
-
     String getHistoryKey();
-
-    default History takeCastHistory() {
-        return null;
-    }
 
     boolean isSiteChangeable();
 
@@ -42,31 +31,17 @@ public interface VodPlaybackHost {
 
     boolean isPlayerEmpty();
 
-    boolean hasPlaybackSession();
-
-    boolean isLivePlayback();
-
-    boolean canTrackPlaybackProgress();
-
-    default boolean isIsoNavigationPlayback() {
-        return false;
-    }
-
-    boolean canPreloadNext();
-
-    boolean isPlayerPlaying();
+    boolean isFullscreenForPlayback();
 
     long getPlayerPosition();
 
-    long getPlayerDuration();
-
     void usePushId(String id);
 
-    default void openPush(String target) {
-        throw new UnsupportedOperationException();
-    }
+    void requestDetail(String key, String id);
 
-    void onPlaybackRequested();
+    void requestPlayer(VodPlayRequest request);
+
+    void requestSearch(List<Site> sites, String keyword);
 
     void prepareSource(Vod item);
 
@@ -76,30 +51,11 @@ public interface VodPlaybackHost {
 
     void replay(long position);
 
-    void seekPlayback(long position);
-
-    default void setPlaybackEnding(long endingMs) {
-    }
-
-    default boolean isPlaybackEndingManaged() {
-        return false;
-    }
-
-    void startPlayback(Result result, boolean useParse, long startPositionMs, MediaMetadata metadata);
-
-    boolean preloadPlayback(Result result, long startPositionMs, MediaMetadata metadata, VodPlayRequest request);
-
-    default boolean seekToPreloaded(VodPlayRequest request) {
-        return false;
-    }
-
-    void clearPreload();
+    void startPlayback(Result result, boolean useParse, long startPositionMs, History history, Episode episode);
 
     void loadDanmaku(Result result, History history, Episode episode);
 
     void renderDetail(Vod item, History history);
-
-    void renderVodUpdate(Vod item);
 
     void renderEmptyDetail();
 
@@ -129,8 +85,6 @@ public interface VodPlaybackHost {
 
     void renderDescription(String desc);
 
-    void renderPlaybackMetadata(MediaMetadata metadata);
-
     void onDetailFallbackScheduled();
 
     void onDetailFallbackCancelled();
@@ -144,6 +98,8 @@ public interface VodPlaybackHost {
     void showSwitchLine(Flag flag);
 
     void showSwitchSource(Vod item);
+
+    void showEpisodeReady(Episode item);
 
     void showNoNext(boolean reversed);
 

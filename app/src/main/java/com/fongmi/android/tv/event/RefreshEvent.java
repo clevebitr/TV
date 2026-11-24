@@ -1,24 +1,17 @@
 package com.fongmi.android.tv.event;
 
-import com.fongmi.android.tv.bean.Result;
+import com.fongmi.android.tv.bean.Vod;
 
 import org.greenrobot.eventbus.EventBus;
 
 public class RefreshEvent {
 
     private final Type type;
-    private final String path;
+    private String path;
+    private Vod vod;
 
     public static void home() {
         EventBus.getDefault().post(new RefreshEvent(Type.HOME));
-    }
-
-    public static void homeContent(String siteKey) {
-        EventBus.getDefault().post(new HomeContent(siteKey));
-    }
-
-    public static void homeContentLoaded(String siteKey, Result result) {
-        EventBus.getDefault().post(new HomeContentLoaded(siteKey, result));
     }
 
     public static void category() {
@@ -61,13 +54,22 @@ public class RefreshEvent {
         EventBus.getDefault().post(new RefreshEvent(Type.DANMAKU, path));
     }
 
-    private RefreshEvent(Type type) {
-        this(type, null);
+    public static void vod(Vod vod) {
+        EventBus.getDefault().post(new RefreshEvent(Type.VOD, vod));
     }
 
-    private RefreshEvent(Type type, String path) {
+    private RefreshEvent(Type type) {
+        this.type = type;
+    }
+
+    public RefreshEvent(Type type, String path) {
         this.type = type;
         this.path = path;
+    }
+
+    private RefreshEvent(Type type, Vod vod) {
+        this.type = type;
+        this.vod = vod;
     }
 
     public Type getType() {
@@ -78,16 +80,11 @@ public class RefreshEvent {
         return path;
     }
 
-    public record HomeContent(String siteKey) {
-
-        public boolean matchesSite(String key) {
-            return siteKey == null || siteKey.isEmpty() || siteKey.equals(key);
-        }
+    public Vod getVod() {
+        return vod;
     }
 
-    public record HomeContentLoaded(String siteKey, Result result) {}
-
     public enum Type {
-        HOME, CATEGORY, HISTORY, KEEP, SIZE, THEME, LIVE, DETAIL, PLAYER, SUBTITLE, DANMAKU
+        HOME, CATEGORY, HISTORY, KEEP, SIZE, THEME, LIVE, DETAIL, PLAYER, SUBTITLE, DANMAKU, VOD
     }
 }

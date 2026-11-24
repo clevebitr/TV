@@ -1,12 +1,13 @@
 package com.xunlei.downloadlib.parameter;
 
-import android.net.Uri;
 import android.text.TextUtils;
 
 import com.xunlei.downloadlib.Util;
 
 import java.io.File;
-import java.util.Locale;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 public class TorrentFileInfo implements Comparable<TorrentFileInfo> {
 
@@ -44,19 +45,11 @@ public class TorrentFileInfo implements Comparable<TorrentFileInfo> {
     }
 
     public String getPlayUrl() {
-        String name = TextUtils.isEmpty(mSubPath) ? getFileName() : mSubPath + "/" + getFileName();
-        return new Uri.Builder()
-                .scheme("magnet")
-                .authority("")
-                .path(getFile().getAbsolutePath())
-                .appendQueryParameter("name", name)
-                .appendQueryParameter("index", String.valueOf(getFileIndex()))
-                .build()
-                .toString();
+        return "magnet://" + getFile().getAbsolutePath() + "?name=" + getFileName() + "&index=" + getFileIndex();
     }
 
     public String getExt() {
-        return getFileName().contains(".") ? getFileName().substring(getFileName().lastIndexOf(".") + 1).toLowerCase(Locale.ROOT) : "";
+        return getFileName().contains(".") ? getFileName().substring(getFileName().lastIndexOf(".") + 1).toLowerCase() : "";
     }
 
     @Override

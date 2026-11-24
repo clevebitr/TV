@@ -11,8 +11,6 @@ import com.fongmi.android.tv.ui.adapter.LiveAdapter;
 import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
-import java.util.List;
-
 public class LiveDialog extends BaseAlertDialog implements LiveAdapter.OnClickListener {
 
     private DialogLiveBinding binding;
@@ -61,22 +59,20 @@ public class LiveDialog extends BaseAlertDialog implements LiveAdapter.OnClickLi
 
     @Override
     public void onBootClick(int position, Live item) {
-        item.boot(!item.isBoot()).saveSettings();
+        item.boot(!item.isBoot()).save();
         adapter.notifyItemChanged(position);
     }
 
     @Override
     public void onPassClick(int position, Live item) {
-        item.pass(!item.isPass()).saveSettings();
+        item.pass(!item.isPass()).save();
         adapter.notifyItemChanged(position);
     }
 
     @Override
     public boolean onBootLongClick(Live item) {
         boolean result = !item.isBoot();
-        List<Live> lives = LiveConfig.get().getLives();
-        lives.forEach(live -> live.boot(result));
-        Live.saveSettings(lives);
+        LiveConfig.get().getLives().forEach(live -> live.boot(result).save());
         adapter.notifyItemRangeChanged(0, adapter.getItemCount());
         return true;
     }
@@ -84,9 +80,7 @@ public class LiveDialog extends BaseAlertDialog implements LiveAdapter.OnClickLi
     @Override
     public boolean onPassLongClick(Live item) {
         boolean result = !item.isPass();
-        List<Live> lives = LiveConfig.get().getLives();
-        lives.forEach(live -> live.pass(result));
-        Live.saveSettings(lives);
+        LiveConfig.get().getLives().forEach(live -> live.pass(result).save());
         adapter.notifyItemRangeChanged(0, adapter.getItemCount());
         return true;
     }

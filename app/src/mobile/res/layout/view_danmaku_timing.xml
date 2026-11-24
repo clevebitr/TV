@@ -6,11 +6,12 @@
     android:orientation="vertical">
 
     <androidx.appcompat.widget.LinearLayoutCompat
-        style="@style/PlaybackDialogFirstRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingBottom="4dp"
-        android:orientation="horizontal">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="4dp">
 
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="0dp"
@@ -33,7 +34,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="12dp"
-        android:focusable="true"
         android:stepSize="1000"
         android:valueFrom="-300000"
         android:valueTo="300000"
@@ -45,8 +45,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="24dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp">
+        android:paddingTop="4dp">
 
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="0dp"
@@ -69,7 +68,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="12dp"
-        android:focusable="true"
         android:stepSize="500"
         android:valueFrom="3000"
         android:valueTo="15000"
@@ -81,8 +79,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="24dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp">
+        android:paddingTop="4dp">
 
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="0dp"
@@ -105,7 +102,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="12dp"
-        android:focusable="true"
         android:stepSize="500"
         android:valueFrom="2000"
         android:valueTo="10000"

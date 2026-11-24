@@ -36,6 +36,7 @@ import com.fongmi.android.tv.ui.custom.CustomScroller;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
 import com.fongmi.android.tv.ui.presenter.FilterPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
+import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.google.common.collect.Lists;
 
@@ -49,7 +50,6 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     private FragmentTypeBinding mBinding;
     private ArrayObjectAdapter mAdapter;
     private ArrayObjectAdapter mLast;
-    private VodPresenter mVodPresenter;
     private CustomScroller mScroller;
     private SiteViewModel mViewModel;
     private List<Filter> mFilters;
@@ -89,9 +89,7 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     }
 
     private List<Filter> getFilter() {
-        String typeId = getTypeId();
-        if (!Cache.contains(typeId)) typeId = getParent().getType().getTypeId();
-        return Cache.copy(typeId);
+        return Cache.copy(getTypeId());
     }
 
     private Site getSite() {
@@ -138,10 +136,15 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     private void setViewModel() {
         mViewModel = new ViewModelProvider(this).get(SiteViewModel.class);
         mViewModel.getResult().observe(getViewLifecycleOwner(), this::setAdapter);
+        mViewModel.getAction().observe(getViewLifecycleOwner(), result -> Notify.show(result.getMsg()));
     }
 
     private void setFilters() {
-        for (Filter filter : mFilters) if (mExtends.containsKey(filter.getKey())) filter.setSelected(mExtends.get(filter.getKey()));
+        for (Filter filter : mFilters) {
+            if (mExtends.containsKey(filter.getKey())) {
+                filter.setSelected(mExtends.get(filter.getKey()));
+            }
+        }
     }
 
     private void setClick(ArrayObjectAdapter adapter, String key, Value item) {
@@ -196,20 +199,15 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     }
 
     private void addGrid(List<Vod> items, Style style) {
-        if (mVodPresenter == null || !mVodPresenter.matches(style)) {
-            mVodPresenter = new VodPresenter(this, style);
-            mLast = null;
-        }
         if (checkLastSize(items, style)) return;
         List<ListRow> rows = new ArrayList<>();
-        for (List<Vod> part : Lists.partition(items, Product.getColumn(style))) rows.add(createVideoRow(part));
+        VodPresenter presenter = new VodPresenter(this, style);
+        for (List<Vod> part : Lists.partition(items, Product.getColumn(style))) {
+            mLast = new ArrayObjectAdapter(presenter);
+            mLast.addAll(0, part);
+            rows.add(new ListRow(mLast));
+        }
         mAdapter.addAll(mAdapter.size(), rows);
-    }
-
-    private ListRow createVideoRow(List<Vod> items) {
-        mLast = new ArrayObjectAdapter(mVodPresenter);
-        mLast.addAll(0, items);
-        return new ListRow(mLast);
     }
 
     private ListRow getRow(Filter filter) {
@@ -250,20 +248,16 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
         getVideo();
     }
 
-    public boolean moveToTop() {
-        return mBinding != null && mBinding.recycler.moveToTop();
-    }
-
     @Override
     public void onItemClick(Vod item) {
         if (item.isAction()) {
-            new ViewModelProvider(requireActivity()).get(SiteViewModel.class).action(getKey(), item.getAction());
+            mViewModel.action(getKey(), item.getAction());
         } else if (item.isFolder()) {
             getParent().openFolder(item.getId(), mExtends);
             headerVisible = mBinding.recycler.isHeaderVisible();
         } else {
             if (getSite().isIndex()) CollectActivity.start(requireActivity(), item.getName());
-            else VideoActivity.start(requireActivity(), getKey(), item, isFolder() ? item.getName() : null);
+            else VideoActivity.start(requireActivity(), getKey(), item.getId(), item.getName(), item.getPic(), isFolder() ? item.getName() : null);
         }
     }
 
@@ -295,6 +289,6 @@ public class TypeFragment extends BaseFragment implements CustomScroller.Callbac
     @Override
     public void setUserVisibleHint(boolean isVisibleToUser) {
         super.setUserVisibleHint(isVisibleToUser);
-        moveToTop();
+        if (mBinding != null) mBinding.recycler.moveToTop();
     }
 }

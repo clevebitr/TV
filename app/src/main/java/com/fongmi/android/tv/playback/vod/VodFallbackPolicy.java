@@ -9,50 +9,48 @@ import com.fongmi.android.tv.bean.Vod;
 import java.util.ArrayList;
 import java.util.List;
 
-class VodFallbackPolicy {
+public class VodFallbackPolicy {
 
     private final VodPlaybackController controller;
     private final VodPlaybackState state;
     private final VodPlaybackHost host;
-    private final VodDataSource dataSource;
 
-    VodFallbackPolicy(VodPlaybackController controller, VodPlaybackState state, VodPlaybackHost host, VodDataSource dataSource) {
+    public VodFallbackPolicy(VodPlaybackController controller, VodPlaybackState state, VodPlaybackHost host) {
         this.controller = controller;
         this.state = state;
         this.host = host;
-        this.dataSource = dataSource;
     }
 
-    void playbackError() {
+    public void playbackError() {
         fallbackToNextLineOrSource();
     }
 
-    void emptyFlag() {
+    public void emptyFlag() {
         fallbackToNextLineOrSource();
     }
 
-    void emptyDetail() {
+    public void emptyDetail() {
         fallbackToNextSource(false);
     }
 
-    void manualSwitchSource() {
+    public void manualSwitchSource() {
         fallbackToNextSource(true);
     }
 
-    void search(String keyword, boolean autoFallback) {
+    public void search(String keyword, boolean autoFallback) {
         state.setSearchKeyword(keyword);
         state.setAutoFallback(autoFallback);
         state.setSelectFirstSource(autoFallback);
         host.onSearchStarted(keyword);
-        dataSource.searchContent(getSearchableSites(), keyword, true);
+        host.requestSearch(getSearchableSites(), keyword);
     }
 
-    void onSearchResult(Result result) {
+    public void onSearchResult(Result result) {
         List<Vod> items = new ArrayList<>(result.getList());
         items.removeIf(this::mismatch);
         state.setSources(items);
-        if (state.isSelectFirstSource() && state.hasSources()) nextSource();
-        else host.renderSources(state.getSources());
+        host.renderSources(state.getSources());
+        if (state.isSelectFirstSource()) nextSource();
         if (items.isEmpty()) return;
         host.onSearchResult();
     }

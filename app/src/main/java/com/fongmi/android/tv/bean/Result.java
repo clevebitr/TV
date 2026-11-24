@@ -12,11 +12,9 @@ import com.fongmi.android.tv.gson.DanmakuAdapter;
 import com.fongmi.android.tv.gson.FilterAdapter;
 import com.fongmi.android.tv.gson.HeaderAdapter;
 import com.fongmi.android.tv.gson.MsgAdapter;
-import com.fongmi.android.tv.gson.SkipAdapter;
 import com.fongmi.android.tv.gson.UrlAdapter;
 import com.fongmi.android.tv.setting.DanmakuSetting;
 import com.fongmi.android.tv.utils.Util;
-import com.github.catvod.utils.Auth;
 import com.github.catvod.utils.Trans;
 import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
@@ -27,7 +25,6 @@ import org.simpleframework.xml.Path;
 import org.simpleframework.xml.Root;
 import org.simpleframework.xml.core.Persister;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -61,17 +58,9 @@ public class Result implements Parcelable {
     @JsonAdapter(HeaderAdapter.class)
     private Map<String, String> header;
 
-    private transient Auth.Context auth;
-    private transient List<Episode> resolvedEpisodes;
-    private transient File torrentFile;
-    private transient boolean direct;
-
     @SerializedName("msg")
     @JsonAdapter(MsgAdapter.class)
     private String msg;
-
-    @SerializedName("web")
-    private Web web;
 
     @SerializedName("danmaku")
     @JsonAdapter(DanmakuAdapter.class)
@@ -79,9 +68,6 @@ public class Result implements Parcelable {
 
     @SerializedName("subs")
     private List<Sub> subs;
-    @SerializedName("skips")
-    @JsonAdapter(SkipAdapter.class)
-    private List<SkipSegment> skipSegments;
     @SerializedName("playUrl")
     private String playUrl;
     @SerializedName("artwork")
@@ -101,7 +87,7 @@ public class Result implements Parcelable {
     @SerializedName("position")
     private Long position;
     @SerializedName("pagecount")
-    private Long pagecount;
+    private Integer pagecount;
     @SerializedName("parse")
     private Integer parse;
     @SerializedName("code")
@@ -110,8 +96,6 @@ public class Result implements Parcelable {
     private Integer jx;
     @SerializedName("drm")
     private Drm drm;
-    @SerializedName("timeshift")
-    private Timeshift timeshift;
 
     public Result() {
     }
@@ -199,22 +183,6 @@ public class Result implements Parcelable {
         return list == null ? Collections.emptyList() : list;
     }
 
-    public List<Episode> getResolvedEpisodes() {
-        return resolvedEpisodes == null ? Collections.emptyList() : resolvedEpisodes;
-    }
-
-    public void setResolvedEpisodes(List<Episode> episodes) {
-        this.resolvedEpisodes = episodes;
-    }
-
-    public File getTorrentFile() {
-        return torrentFile;
-    }
-
-    public void setTorrentFile(File file) {
-        this.torrentFile = file;
-    }
-
     public void setList(List<Vod> list) {
         this.list = list;
     }
@@ -231,12 +199,6 @@ public class Result implements Parcelable {
         this.url = getUrl().replace(url);
     }
 
-    public synchronized Web takeWeb() {
-        Web value = web;
-        web = null;
-        return value;
-    }
-
     public String getMsg() {
         return TextUtils.isEmpty(msg) || getCode() != 0 ? "" : msg;
     }
@@ -249,41 +211,16 @@ public class Result implements Parcelable {
         return subs == null ? new ArrayList<>() : new ArrayList<>(subs);
     }
 
-    public List<SkipSegment> getSkipSegments() {
-        return skipSegments == null ? Collections.emptyList() : skipSegments;
-    }
-
     public void setSubs(List<Sub> subs) {
         if (getSubs().isEmpty()) this.subs = subs;
-    }
-
-    public void addSub(Sub sub) {
-        if (sub == null || sub.isEmpty()) return;
-        subs = getSubs();
-        subs.remove(sub);
-        subs.add(0, sub);
     }
 
     public Map<String, String> getHeader() {
         return header == null ? new HashMap<>() : header;
     }
 
-    public Auth.Context getAuth() {
-        return auth;
-    }
-
-    public void setAuth(Auth.Context auth) {
-        this.auth = auth;
-    }
-
     public void setHeader(Map<String, String> header) {
         if (getHeader().isEmpty()) this.header = header;
-    }
-
-    public void addHeaders(Map<String, String> headers) {
-        if (headers == null || headers.isEmpty()) return;
-        header = new HashMap<>(getHeader());
-        header.putAll(headers);
     }
 
     public String getPlayUrl() {
@@ -352,10 +289,7 @@ public class Result implements Parcelable {
     }
 
     public Integer getPageCount() {
-        if (pagecount == null) return 0;
-        if (pagecount > Integer.MAX_VALUE) return Integer.MAX_VALUE;
-        if (pagecount < Integer.MIN_VALUE) return Integer.MIN_VALUE;
-        return pagecount.intValue();
+        return pagecount == null ? 0 : pagecount;
     }
 
     public Integer getParse() {
@@ -364,13 +298,6 @@ public class Result implements Parcelable {
 
     public void setParse(Integer parse) {
         this.parse = parse;
-    }
-
-    public void setDirect() {
-        parse = 0;
-        jx = 0;
-        playUrl = "";
-        direct = true;
     }
 
     public Integer getCode() {
@@ -387,14 +314,6 @@ public class Result implements Parcelable {
 
     public void setDrm(Drm drm) {
         this.drm = drm;
-    }
-
-    public Timeshift getTimeshift() {
-        return timeshift;
-    }
-
-    public void setTimeshift(Timeshift timeshift) {
-        this.timeshift = timeshift;
     }
 
     public boolean hasMsg() {
@@ -414,7 +333,7 @@ public class Result implements Parcelable {
     }
 
     public boolean isUseParse() {
-        if (direct || !VodConfig.hasParse()) return false;
+        if (!VodConfig.hasParse()) return false;
         return (getPlayUrl().isEmpty() && VodConfig.get().getFlags().contains(getFlag())) || getJx() == 1;
     }
 

@@ -38,17 +38,13 @@ public class SettingPreloadFragment extends BaseFragment {
     @Override
     protected void initEvent() {
         mBinding.preload.setOnClickListener(this::setPreload);
-        mBinding.preloadNext.setOnClickListener(this::setPreloadNext);
-        mBinding.preloadDecoder.setOnClickListener(this::setPreloadDecoder);
         mBinding.preloadSize.setOnClickListener(view -> PreloadDialog.show(this, PreloadDialog.SIZE));
         mBinding.preloadTime.setOnClickListener(view -> PreloadDialog.show(this, PreloadDialog.TIME));
         mBinding.preloadThread.setOnClickListener(view -> PreloadDialog.show(this, PreloadDialog.THREADS));
     }
 
     private void refresh() {
-        mBinding.preloadText.setText(Setting.getSwitch(PreloadSetting.isEnabled()));
-        mBinding.preloadNextText.setText(Setting.getSwitch(PreloadSetting.isNextEpisodeEnabled()));
-        setPreloadDecoderText();
+        mBinding.preloadText.setText(Setting.getSwitch(PreloadSetting.isPreload()));
         setPreloadThreadsText();
         setPreloadSizeText();
         setPreloadTimeText();
@@ -56,59 +52,41 @@ public class SettingPreloadFragment extends BaseFragment {
     }
 
     private void setVisible() {
-        boolean preload = PreloadSetting.isEnabled();
-        boolean exoPreload = preload && PlayerSetting.isExo();
+        boolean preload = PreloadSetting.isPreload();
+        mBinding.preloadSize.setVisibility(preload ? View.VISIBLE : View.GONE);
         mBinding.preloadTime.setVisibility(preload ? View.VISIBLE : View.GONE);
-        mBinding.preloadNext.setVisibility(exoPreload ? View.VISIBLE : View.GONE);
-        mBinding.preloadDecoder.setVisibility(exoPreload && PreloadSetting.isNextEpisodeEnabled() ? View.VISIBLE : View.GONE);
-        mBinding.preloadSize.setVisibility(exoPreload ? View.VISIBLE : View.GONE);
-        mBinding.preloadThread.setVisibility(exoPreload ? View.VISIBLE : View.GONE);
+        mBinding.preloadThread.setVisibility(preload && !PlayerSetting.isMpv() ? View.VISIBLE : View.GONE);
     }
 
     private void setPreload(View view) {
-        PreloadSetting.putEnabled(!PreloadSetting.isEnabled());
-        mBinding.preloadText.setText(Setting.getSwitch(PreloadSetting.isEnabled()));
+        PreloadSetting.putPreload(!PreloadSetting.isPreload());
+        mBinding.preloadText.setText(Setting.getSwitch(PreloadSetting.isPreload()));
         setVisible();
-    }
-
-    private void setPreloadNext(View view) {
-        PreloadSetting.putNextEpisodeEnabled(!PreloadSetting.isNextEpisodeEnabled());
-        mBinding.preloadNextText.setText(Setting.getSwitch(PreloadSetting.isNextEpisodeEnabled()));
-        setVisible();
-    }
-
-    private void setPreloadDecoder(View view) {
-        PreloadSetting.putDecoderPrewarmingEnabled(!PreloadSetting.isDecoderPrewarmingEnabled());
-        setPreloadDecoderText();
     }
 
     public void setPreload(int type, int value) {
         if (type == PreloadDialog.THREADS) {
-            PreloadSetting.putThreads(value);
+            PreloadSetting.putPreloadThreads(value);
             setPreloadThreadsText();
         } else if (type == PreloadDialog.SIZE) {
-            PreloadSetting.putSizeMb(value);
+            PreloadSetting.putPreloadSizeMb(value);
             setPreloadSizeText();
         } else if (type == PreloadDialog.TIME) {
-            PreloadSetting.putTimeSeconds(value);
+            PreloadSetting.putPreloadTimeSeconds(value);
             setPreloadTimeText();
         }
     }
 
-    private void setPreloadDecoderText() {
-        mBinding.preloadDecoderText.setText(Setting.getSwitch(PreloadSetting.isDecoderPrewarmingEnabled()));
-    }
-
     private void setPreloadSizeText() {
-        mBinding.preloadSizeText.setText(FileUtil.byteCountToDisplaySize(PreloadSetting.getSizeBytes()));
+        mBinding.preloadSizeText.setText(FileUtil.byteCountToDisplaySize(PreloadSetting.getPreloadSizeBytes()));
     }
 
     private void setPreloadTimeText() {
-        mBinding.preloadTimeText.setText(getString(R.string.player_preload_time_value, PreloadSetting.getTimeSeconds()));
+        mBinding.preloadTimeText.setText(getString(R.string.player_preload_time_value, PreloadSetting.getPreloadTimeSeconds()));
     }
 
     private void setPreloadThreadsText() {
-        mBinding.preloadThreadText.setText(getString(R.string.player_preload_threads_value, PreloadSetting.getThreads()));
+        mBinding.preloadThreadText.setText(getString(R.string.player_preload_threads_value, PreloadSetting.getPreloadThreads()));
     }
 
     @Override

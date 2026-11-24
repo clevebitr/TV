@@ -1,50 +1,51 @@
 package com.fongmi.android.tv.api.loader;
 
 import com.fongmi.android.tv.App;
+import com.fongmi.chaquo.Loader;
 import com.github.catvod.crawler.Spider;
-import com.github.catvod.runtime.PythonRuntime;
-import com.github.catvod.utils.RuntimeModule;
+import com.github.catvod.crawler.SpiderNull;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-public class PyLoader extends SpiderLoader {
+public class PyLoader {
 
-    private final PythonRuntime loader;
+    private final ConcurrentHashMap<String, Spider> spiders;
+    private final Loader loader;
     private volatile String recent;
 
     public PyLoader() {
-        this(RuntimeModule.PYTHON.entry(PythonRuntime.class));
+        spiders = new ConcurrentHashMap<>();
+        loader = new Loader();
     }
 
-    PyLoader(PyLoader previous) {
-        this(previous.loader);
-    }
-
-    private PyLoader(PythonRuntime loader) {
-        loader.initialize();
-        this.loader = loader;
-    }
-
-    @Override
-    protected void clearReferences() {
+    public void clear() {
+        spiders.values().forEach(Spider::destroy);
+        spiders.clear();
         recent = null;
     }
 
-    public synchronized void setRecent(String recent) {
-        checkOpen();
+    public void setRecent(String recent) {
         this.recent = recent;
     }
 
     public Spider getSpider(String key, String api, String ext) {
-        return load(key, App.get(), ext, () -> newSpider(key, api));
-    }
-
-    Spider newSpider(String key, String api) {
-        return loader.spider(api, key, JsHost.INSTANCE, JsHost.INSTANCE::getUserAgent);
+        return spiders.computeIfAbsent(key, k -> {
+            try {
+                Spider spider = loader.spider(api);
+                spider.siteKey = key;
+                spider.init(App.get(), ext);
+                return spider;
+            } catch (Throwable e) {
+                e.printStackTrace();
+                return new SpiderNull();
+            }
+        });
     }
 
     public Object[] proxy(Map<String, String> params) throws Exception {
-        Spider spider = findSpider(recent);
+        if (recent == null) return null;
+        Spider spider = spiders.get(recent);
         return spider != null ? spider.proxy(params) : null;
     }
 }

@@ -28,7 +28,6 @@ import com.fongmi.android.tv.Updater;
 import com.fongmi.android.tv.api.config.LiveConfig;
 import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.api.config.WallConfig;
-import com.fongmi.android.tv.api.node.NodeRuntime;
 import com.fongmi.android.tv.bean.Cache;
 import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Func;
@@ -38,7 +37,7 @@ import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.bean.Style;
 import com.fongmi.android.tv.bean.Vod;
 import com.fongmi.android.tv.databinding.ActivityHomeBinding;
-import com.fongmi.android.tv.db.BackupManager;
+import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.CastEvent;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
@@ -46,7 +45,6 @@ import com.fongmi.android.tv.event.ServerEvent;
 import com.fongmi.android.tv.impl.Callback;
 import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.player.extractor.Source;
-import com.fongmi.android.tv.playback.ExternalPlayback;
 import com.fongmi.android.tv.server.Server;
 import com.fongmi.android.tv.service.DLNARendererService;
 import com.fongmi.android.tv.service.PlaybackService;
@@ -55,7 +53,6 @@ import com.fongmi.android.tv.ui.base.BaseActivity;
 import com.fongmi.android.tv.ui.custom.CustomRowPresenter;
 import com.fongmi.android.tv.ui.custom.CustomSelector;
 import com.fongmi.android.tv.ui.custom.CustomTitleView;
-import com.fongmi.android.tv.ui.dialog.LocalConnectDialog;
 import com.fongmi.android.tv.ui.dialog.SiteDialog;
 import com.fongmi.android.tv.ui.presenter.FuncPresenter;
 import com.fongmi.android.tv.ui.presenter.HeaderPresenter;
@@ -63,12 +60,13 @@ import com.fongmi.android.tv.ui.presenter.HistoryPresenter;
 import com.fongmi.android.tv.ui.presenter.ProgressPresenter;
 import com.fongmi.android.tv.ui.presenter.VodPresenter;
 import com.fongmi.android.tv.utils.Clock;
+import com.fongmi.android.tv.utils.FileChooser;
 import com.fongmi.android.tv.utils.ImgUtil;
 import com.fongmi.android.tv.utils.KeyUtil;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.PermissionUtil;
 import com.fongmi.android.tv.utils.ResUtil;
-import com.fongmi.android.tv.utils.Util;
+import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.net.OkHttp;
 import com.google.common.collect.Lists;
 
@@ -82,22 +80,12 @@ import java.util.Optional;
 
 public class HomeActivity extends BaseActivity implements CustomTitleView.Listener, VodPresenter.OnClickListener, FuncPresenter.OnClickListener, HistoryPresenter.OnClickListener {
 
-    private static final String STATE_ACTION_HANDLED = "action_handled";
-    private static volatile int instanceCount;
-
-    public static boolean isRunning() {
-        return instanceCount > 0;
-    }
-
     private ActivityHomeBinding mBinding;
     private ArrayObjectAdapter mHistoryAdapter;
     private ArrayObjectAdapter mFuncAdapter;
     private ArrayObjectAdapter mAdapter;
     private HistoryPresenter mPresenter;
-    private VodPresenter mVodPresenter;
     private SiteViewModel mViewModel;
-    private Intent pendingAction;
-    private boolean actionReady;
     private Result mResult;
     private Clock mClock;
 
@@ -117,37 +105,29 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent);
-        pendingAction = intent;
-        consumeAction();
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != ExternalPlayback.REQUEST_CODE) return;
-        setResult(resultCode, data);
-        finish();
+        checkAction(intent);
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        instanceCount++;
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
     }
 
     @Override
     protected void initView(Bundle savedInstanceState) {
-        if (savedInstanceState == null || !savedInstanceState.getBoolean(STATE_ACTION_HANDLED)) pendingAction = getIntent();
         mResult = Result.empty();
         mClock = Clock.create(mBinding.clock);
         mBinding.progressLayout.showProgress();
-        Updater.get().start(this, false);
+        PermissionUtil.requestNotify(this);
+        DLNARendererService.start(this);
+        Updater.create().start(this);
         setRecyclerView();
         setViewModel();
         setAdapter();
-        checkPermission();
+        initConfig();
+        setTitle();
+        setLogo();
     }
 
     @Override
@@ -163,19 +143,22 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     private void checkAction(Intent intent) {
-        if (Intent.ACTION_SEND.equals(intent.getAction()) || Intent.ACTION_VIEW.equals(intent.getAction())) {
-            ExternalPlayback.open(this, intent, this::loadLive);
+        if (Intent.ACTION_SEND.equals(intent.getAction())) {
+            VideoActivity.push(this, intent.getStringExtra(Intent.EXTRA_TEXT));
+        } else if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            PermissionUtil.requestFile(this, allGranted -> checkType(intent));
         } else if (Intent.ACTION_SEARCH.equals(intent.getAction())) {
             String keyword = intent.getStringExtra(SearchManager.QUERY);
             if (!TextUtils.isEmpty(keyword)) SearchActivity.start(this, keyword);
         }
     }
 
-    private void consumeAction() {
-        if (!actionReady || pendingAction == null) return;
-        Intent intent = pendingAction;
-        pendingAction = null;
-        checkAction(intent);
+    private void checkType(Intent intent) {
+        if ("text/plain".equals(intent.getType()) || UrlUtil.path(intent.getData()).endsWith(".m3u")) {
+            loadLive("file:/" + FileChooser.getPathFromUri(intent.getData()));
+        } else {
+            VideoActivity.push(this, intent.getData().toString());
+        }
     }
 
     @SuppressLint("RestrictedApi")
@@ -193,14 +176,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void setViewModel() {
         mViewModel = new ViewModelProvider(this).get(SiteViewModel.class);
-        mViewModel.getAction().observe(this, result -> WebActivity.handleAction(this, result));
-        mViewModel.getResult().observe(this, this::onResult);
-    }
-
-    private void onResult(Result result) {
-        clearRecommendations();
-        addVideo(mResult = result);
-        Cache.clear().put(result);
+        mViewModel.getResult().observe(this, result -> {
+            mAdapter.remove("progress");
+            addVideo(mResult = result);
+            Cache.clear().put(result);
+        });
     }
 
     private void setAdapter() {
@@ -208,18 +188,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         mAdapter.add(new ListRow(mFuncAdapter = new ArrayObjectAdapter(new FuncPresenter(this))));
         mAdapter.add(R.string.home_history);
         mAdapter.add(R.string.home_recommend);
-    }
-
-    private void checkPermission() {
-        PermissionUtil.requestLocalNetwork(this, this::onNetworkPermissionResult);
-    }
-
-    private void onNetworkPermissionResult(boolean allGranted) {
-        PermissionUtil.requestNotify(this);
-        if (allGranted) DLNARendererService.start(this);
-        initConfig();
-        setTitle();
-        setLogo();
     }
 
     private void setTitle() {
@@ -238,47 +206,28 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         return new Callback() {
             @Override
             public void success() {
-                onConfigReady();
+                showContent();
             }
 
             @Override
             public void error(String msg) {
                 Notify.show(msg);
-                onConfigReady();
+                showContent();
             }
         };
     }
 
-    private void onConfigReady() {
-        actionReady = true;
-        showContent();
-        consumeAction();
-    }
-
     private void showContent() {
         mBinding.progressLayout.showContent();
+        checkAction(getIntent());
         setFocus();
     }
 
-    @Override
-    protected void onSaveInstanceState(@NonNull Bundle outState) {
-        outState.putBoolean(STATE_ACTION_HANDLED, pendingAction == null);
-        super.onSaveInstanceState(outState);
-    }
-
     private void loadLive(String url) {
-        if (isFinishing() || isDestroyed()) return;
         LiveConfig.load(Config.find(url, 1), new Callback() {
             @Override
             public void success() {
-                if (getIntent().getBooleanExtra(ExternalPlayback.FORWARD_RESULT, false)) startActivityForResult(new Intent(HomeActivity.this, LiveActivity.class).putExtra("empty", LiveConfig.isEmpty()), ExternalPlayback.REQUEST_CODE);
-                else LiveActivity.start(getActivity());
-            }
-
-            @Override
-            public void error(String msg) {
-                Notify.show(msg);
-                if (getIntent().getBooleanExtra(ExternalPlayback.FORWARD_RESULT, false)) finish();
+                LiveActivity.start(getActivity());
             }
         });
     }
@@ -291,16 +240,12 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void getVideo() {
         mResult = Result.empty();
-        if (mAdapter.indexOf("progress") == -1) {
-            clearRecommendations();
-            mAdapter.add("progress");
-        }
-        mViewModel.homeContent();
-    }
-
-    private void clearRecommendations() {
         int index = getRecommendIndex();
-        if (mAdapter.size() > index) mAdapter.removeItems(index, mAdapter.size() - index);
+        boolean gone = mAdapter.indexOf("progress") == -1;
+        boolean hasItem = gone && mAdapter.size() > index;
+        if (hasItem) mAdapter.removeItems(index, mAdapter.size() - index);
+        if (gone) mAdapter.add("progress");
+        mViewModel.homeContent();
     }
 
     private void addVideo(Result result) {
@@ -311,15 +256,13 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void addGrid(List<Vod> items, Style style) {
         List<ListRow> rows = new ArrayList<>();
-        if (mVodPresenter == null || !mVodPresenter.matches(style)) mVodPresenter = new VodPresenter(this, style);
-        for (List<Vod> part : Lists.partition(items, Product.getColumn(style))) rows.add(createVideoRow(part));
+        VodPresenter presenter = new VodPresenter(this, style);
+        for (List<Vod> part : Lists.partition(items, Product.getColumn(style))) {
+            ArrayObjectAdapter adapter = new ArrayObjectAdapter(presenter);
+            adapter.addAll(0, part);
+            rows.add(new ListRow(adapter));
+        }
         mAdapter.addAll(mAdapter.size(), rows);
-    }
-
-    private ListRow createVideoRow(List<Vod> items) {
-        ArrayObjectAdapter adapter = new ArrayObjectAdapter(mVodPresenter);
-        adapter.addAll(0, items);
-        return new ListRow(adapter);
     }
 
     private void setFunc() {
@@ -355,7 +298,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     private void clearHistory() {
         mAdapter.removeItems(getHistoryIndex(), 1);
-        History.clear(VodConfig.getCid());
+        History.delete(VodConfig.getCid());
         mPresenter.setDelete(false);
         mHistoryAdapter.clear();
     }
@@ -407,12 +350,6 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
-    public void onHomeContent(RefreshEvent.HomeContent event) {
-        Site site = getHome();
-        if (event.matchesSite(site.getKey())) mViewModel.refreshHomeContent(site);
-    }
-
-    @Subscribe(threadMode = ThreadMode.MAIN)
     public void onServerEvent(ServerEvent event) {
         switch (event.type()) {
             case SEARCH:
@@ -426,8 +363,11 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void onCastEvent(CastEvent event) {
-        if (VodConfig.get().getConfig().equals(event.config())) VideoActivity.cast(this, event.history());
-        else VodConfig.load(event.config(), getCallback(event));
+        if (VodConfig.get().getConfig().equals(event.config())) {
+            VideoActivity.cast(this, event.history().save(VodConfig.getCid()));
+        } else {
+            VodConfig.load(event.config(), getCallback(event));
+        }
     }
 
     private Callback getCallback(CastEvent event) {
@@ -449,7 +389,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         if (item.getResId() == R.string.home_vod) VodActivity.start(this, mResult);
         else if (item.getResId() == R.string.home_live) LiveActivity.start(this);
         else if (item.getResId() == R.string.home_keep) KeepActivity.start(this);
-        else if (item.getResId() == R.string.home_push) LocalConnectDialog.show(this, "push");
+        else if (item.getResId() == R.string.home_push) PushActivity.start(this);
         else if (item.getResId() == R.string.home_search) SearchActivity.start(this);
         else if (item.getResId() == R.string.home_setting) SettingActivity.start(this);
     }
@@ -458,7 +398,7 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
     public void onItemClick(Vod item) {
         if (item.isAction()) mViewModel.action(getHome().getKey(), item.getAction());
         else if (getHome().isIndex()) CollectActivity.start(this, item.getName());
-        else VideoActivity.start(this, getHome().getKey(), item, null);
+        else VideoActivity.start(this, getHome().getKey(), item.getId(), item.getName(), item.getPic());
     }
 
     @Override
@@ -531,28 +471,20 @@ public class HomeActivity extends BaseActivity implements CustomTitleView.Listen
         } else if (mBinding.recycler.getSelectedPosition() != 0) {
             mBinding.recycler.scrollToPosition(0);
         } else {
-            if (PlaybackService.isRunning()) Util.moveToBackground(this);
+            if (PlaybackService.isRunning()) moveTaskToBack(true);
             else super.onBackInvoked();
         }
     }
 
     @Override
     protected void onDestroy() {
-        if (--instanceCount == 0 && !isChangingConfigurations()) {
-            BackupManager.backup();
-            releaseResources();
-        }
-        super.onDestroy();
-    }
-
-    public static void releaseResources() {
-        if (isRunning() || PlaybackService.isRunning()) return;
-        DLNARendererService.stop(App.get());
+        DLNARendererService.stop(this);
         LiveConfig.get().clear();
-        VodConfig.get().destroy();
+        VodConfig.get().clear();
+        AppDatabase.backup();
         OkHttp.get().clear();
         Source.get().exit();
         Server.get().stop();
-        NodeRuntime.get().releaseIfUnused();
+        super.onDestroy();
     }
 }

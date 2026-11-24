@@ -11,7 +11,6 @@ import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
 
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -55,10 +54,9 @@ public class Drm {
     }
 
     public UUID getUUID() {
-        String type = getType().toLowerCase(Locale.ROOT);
-        if (type.contains("playready")) return C.PLAYREADY_UUID;
-        if (type.contains("widevine")) return C.WIDEVINE_UUID;
-        if (type.contains("clearkey")) return C.CLEARKEY_UUID;
+        if (getType().contains("playready")) return C.PLAYREADY_UUID;
+        if (getType().contains("widevine")) return C.WIDEVINE_UUID;
+        if (getType().contains("clearkey")) return C.CLEARKEY_UUID;
         return C.UUID_NIL;
     }
 

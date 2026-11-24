@@ -12,74 +12,61 @@ import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.databinding.DialogDanmakuSettingBinding;
 import com.fongmi.android.tv.player.PlayerManager;
-import com.fongmi.android.tv.player.subtitle.ExternalFont;
 import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
 
 public final class DanmakuSettingDialog {
 
+    private PlayerManager player;
+
     public static DanmakuSettingDialog create() {
         return new DanmakuSettingDialog();
     }
 
+    public DanmakuSettingDialog player(PlayerManager player) {
+        this.player = player;
+        return this;
+    }
+
     public void show(FragmentActivity activity) {
         FragmentManager manager = activity.getSupportFragmentManager();
-        if (manager.isStateSaved()) return;
         for (Fragment fragment : manager.getFragments()) if (fragment instanceof BottomSheet || fragment instanceof SideSheet) return;
-        if (Util.isFullscreenLand(activity) || Util.isLeanback()) new SideSheet().show(manager, null);
-        else new BottomSheet().show(manager, null);
+        if (Util.isFullscreenLand(activity) || Util.isLeanback()) new SideSheet(player).show(manager, null);
+        else new BottomSheet(player).show(manager, null);
+    }
+
+    private static DialogDanmakuSettingBinding inflate(LayoutInflater inflater, ViewGroup container) {
+        return DialogDanmakuSettingBinding.inflate(inflater, container, false);
     }
 
     public static final class BottomSheet extends BaseBottomSheetDialog {
 
-        private final ExternalFontSelector fontSelector = new ExternalFontSelector(this, this::onFontSelected);
         private DialogDanmakuSettingBinding binding;
-        private DanmakuSettingPanel panel;
+        private final PlayerManager player;
 
-        @Override
-        protected ViewBinding getBinding(@NonNull LayoutInflater inflater, @Nullable ViewGroup container) {
-            return binding = DialogDanmakuSettingBinding.inflate(inflater, container, false);
+        BottomSheet(PlayerManager player) {
+            this.player = player;
         }
 
         @Override
-        protected int getMaxHeight() {
-            return ResUtil.getScreenHeight() / 2;
+        protected ViewBinding getBinding(@NonNull LayoutInflater inflater, @Nullable ViewGroup container) {
+            return binding = DanmakuSettingDialog.inflate(inflater, container);
         }
 
         @Override
         protected void initView() {
-            PlaybackDialogFocus.preferCheckedChips(binding.getRoot());
-            PlaybackDialog.observe(this, this::bindPlayer);
-        }
-
-        private void bindPlayer(PlayerManager player) {
-            if (panel != null) panel.release();
-            fontSelector.release();
-            panel = null;
-            if (player == null) return;
-            panel = new DanmakuSettingPanel(binding, player, fontSelector);
-            panel.bind();
-        }
-
-        private void onFontSelected(@Nullable ExternalFont.Item font) {
-            if (panel != null) panel.onFontSelected(font);
-        }
-
-        @Override
-        public void onDestroyView() {
-            if (panel != null) panel.release();
-            fontSelector.release();
-            panel = null;
-            binding = null;
-            super.onDestroyView();
+            new DanmakuSettingPanel(binding, player).bind();
         }
     }
 
     public static final class SideSheet extends BaseSideSheetDialog {
 
-        private final ExternalFontSelector fontSelector = new ExternalFontSelector(this, this::onFontSelected);
         private DialogDanmakuSettingBinding binding;
-        private DanmakuSettingPanel panel;
+        private final PlayerManager player;
+
+        SideSheet(PlayerManager player) {
+            this.player = player;
+        }
 
         @Override
         protected int getWidth() {
@@ -88,35 +75,12 @@ public final class DanmakuSettingDialog {
 
         @Override
         protected ViewBinding getBinding(@NonNull LayoutInflater inflater, @Nullable ViewGroup container) {
-            return binding = DialogDanmakuSettingBinding.inflate(inflater, container, false);
+            return binding = DanmakuSettingDialog.inflate(inflater, container);
         }
 
         @Override
         protected void initView() {
-            PlaybackDialogFocus.preferCheckedChips(binding.getRoot());
-            PlaybackDialog.observe(this, this::bindPlayer);
-        }
-
-        private void bindPlayer(PlayerManager player) {
-            if (panel != null) panel.release();
-            fontSelector.release();
-            panel = null;
-            if (player == null) return;
-            panel = new DanmakuSettingPanel(binding, player, fontSelector);
-            panel.bind();
-        }
-
-        private void onFontSelected(@Nullable ExternalFont.Item font) {
-            if (panel != null) panel.onFontSelected(font);
-        }
-
-        @Override
-        public void onDestroyView() {
-            if (panel != null) panel.release();
-            fontSelector.release();
-            panel = null;
-            binding = null;
-            super.onDestroyView();
+            new DanmakuSettingPanel(binding, player).bind();
         }
     }
 }

@@ -131,14 +131,7 @@ public class Group {
     }
 
     public int find(int number) {
-        List<Channel> items = getChannel();
-        for (int i = items.size() - 1; i >= 0; i--) {
-            try {
-                if (Integer.parseInt(items.get(i).getNumber()) == number) return i;
-            } catch (NumberFormatException e) {
-            }
-        }
-        return -1;
+        return getChannel().lastIndexOf(Channel.create(number));
     }
 
     public int find(String name) {

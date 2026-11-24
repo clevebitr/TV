@@ -1,6 +1,6 @@
 package com.github.catvod.utils;
 
-import com.github.catvod.Runtime;
+import com.github.catvod.Init;
 
 import java.io.InputStream;
 
@@ -8,7 +8,7 @@ public class Asset {
 
     public static InputStream open(String fileName) {
         try {
-            return Runtime.context().getAssets().open(fileName.replace("assets://", ""));
+            return Init.context().getAssets().open(fileName.replace("assets://", ""));
         } catch (Exception e) {
             return null;
         }

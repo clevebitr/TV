@@ -48,52 +48,11 @@
             <intent-filter>
                 <action android:name="android.intent.action.SEARCH" />
             </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".ui.activity.ExternalActivity"
-            android:documentLaunchMode="never"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:taskAffinity=""
-            android:theme="@android:style/Theme.NoDisplay">
 
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
-                <data android:mimeType="video/*" />
-                <data android:mimeType="audio/*" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="application/x-bittorrent" />
-                <data android:mimeType="application/x-mpegurl" />
-                <data android:mimeType="application/vnd.apple.mpegurl" />
-                <data android:mimeType="application/dash+xml" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:mimeType="video/*" />
-                <data android:mimeType="audio/*" />
-                <data android:mimeType="text/plain" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="application/x-bittorrent" />
-                <data android:mimeType="application/x-mpegurl" />
-                <data android:mimeType="application/vnd.apple.mpegurl" />
-                <data android:mimeType="application/dash+xml" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
             </intent-filter>
 
             <intent-filter>
@@ -107,59 +66,7 @@
                 <data android:mimeType="video/*" />
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="text/plain" />
-                <data android:mimeType="application/octet-stream" />
                 <data android:mimeType="application/x-bittorrent" />
-                <data android:mimeType="application/x-mpegurl" />
-                <data android:mimeType="application/vnd.apple.mpegurl" />
-                <data android:mimeType="application/dash+xml" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:mimeType="video/*" />
-                <data android:mimeType="audio/*" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="application/x-bittorrent" />
-                <data android:mimeType="application/x-mpegurl" />
-                <data android:mimeType="application/vnd.apple.mpegurl" />
-                <data android:mimeType="application/dash+xml" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="content" />
-                <data android:scheme="file" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:host="*" />
-                <data android:pathPattern=".*\\.m3u8" />
-                <data android:pathPattern=".*\\.mp4" />
-                <data android:pathPattern=".*\\.mkv" />
-                <data android:pathPattern=".*\\.flv" />
-                <data android:pathPattern=".*\\.mp3" />
-                <data android:pathPattern=".*\\.m4a" />
-                <data android:pathPattern=".*\\.aac" />
-                <data android:pathPattern=".*\\.mpd" />
-                <data android:pathPattern=".*\\.ts" />
-                <data android:pathPattern=".*\\.webm" />
-                <data android:pathPattern=".*\\.mov" />
-                <data android:pathPattern=".*\\.avi" />
-                <data android:pathPattern=".*\\.wav" />
-                <data android:pathPattern=".*\\.ogg" />
             </intent-filter>
 
             <intent-filter>
@@ -171,9 +78,22 @@
                 <data android:scheme="smb" />
                 <data android:scheme="rtmp" />
                 <data android:scheme="rtsp" />
-                <data android:scheme="udp" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
                 <data android:scheme="ed2k" />
                 <data android:scheme="magnet" />
+                <data android:scheme="thunder" />
+                <data android:scheme="jianpian" />
             </intent-filter>
         </activity>
 
@@ -215,6 +135,11 @@
             android:screenOrientation="sensorLandscape" />
 
         <activity
+            android:name=".ui.activity.PushActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:screenOrientation="sensorLandscape" />
+
+        <activity
             android:name=".ui.activity.SearchActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:screenOrientation="sensorLandscape"
@@ -231,16 +156,7 @@
             android:screenOrientation="sensorLandscape" />
 
         <activity
-            android:name=".ui.activity.WebActivity"
-            android:screenOrientation="sensorLandscape" />
-
-        <activity
             android:name=".ui.activity.SettingActivity"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
-            android:screenOrientation="sensorLandscape" />
-
-        <activity
-            android:name=".ui.activity.ModuleActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:screenOrientation="sensorLandscape" />
 
@@ -250,7 +166,7 @@
             android:screenOrientation="sensorLandscape" />
 
         <activity
-            android:name=".ui.activity.SettingOutputActivity"
+            android:name=".ui.activity.SettingDecodeActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:screenOrientation="sensorLandscape" />
 

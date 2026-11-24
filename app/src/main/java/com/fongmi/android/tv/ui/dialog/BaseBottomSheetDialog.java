@@ -9,14 +9,12 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
-import androidx.activity.ComponentDialog;
-import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.viewbinding.ViewBinding;
 
+import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.utils.ResUtil;
 import com.fongmi.android.tv.utils.Util;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
@@ -24,19 +22,13 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
 
 public abstract class BaseBottomSheetDialog extends BottomSheetDialogFragment {
 
-    private final OnBackPressedCallback backCallback = new OnBackPressedCallback(false) {
-        @Override
-        public void handleOnBackPressed() {
-            onBackInvoked();
-        }
-    };
-
     protected abstract ViewBinding getBinding(@NonNull LayoutInflater inflater, @Nullable ViewGroup container);
 
     @NonNull
     @Override
     public Dialog onCreateDialog(Bundle savedInstanceState) {
         BottomSheetDialog dialog = (BottomSheetDialog) super.onCreateDialog(savedInstanceState);
+        dialog.setOnShowListener(d -> setBehavior(dialog));
         Window window = dialog.getWindow();
         if (window == null) return dialog;
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -53,15 +45,8 @@ public abstract class BaseBottomSheetDialog extends BottomSheetDialogFragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        setupBackDispatcher();
         initView();
         initEvent();
-    }
-
-    @Override
-    public void onStart() {
-        super.onStart();
-        setSheet((BottomSheetDialog) requireDialog());
     }
 
     protected void initView() {
@@ -70,53 +55,16 @@ public abstract class BaseBottomSheetDialog extends BottomSheetDialogFragment {
     protected void initEvent() {
     }
 
-    protected void onBackInvoked() {
+    protected boolean transparent() {
+        return false;
     }
 
-    protected final void setBackCallbackEnabled(boolean enabled) {
-        backCallback.setEnabled(enabled);
-    }
-
-    protected int getMaxHeight() {
-        return 0;
-    }
-
-    private void setSheet(BottomSheetDialog dialog) {
+    protected void setBehavior(BottomSheetDialog dialog) {
         FrameLayout sheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
         if (sheet == null) return;
+        if (transparent()) sheet.setBackgroundColor(ResUtil.getColor(R.color.transparent));
         BottomSheetBehavior<FrameLayout> behavior = BottomSheetBehavior.from(sheet);
-        setHeight(sheet, behavior);
         behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
         behavior.setSkipCollapsed(true);
-    }
-
-    private void setHeight(FrameLayout sheet, BottomSheetBehavior<FrameLayout> behavior) {
-        int maxHeight = getMaxHeight();
-        if (maxHeight <= 0) return;
-        behavior.setMaxHeight(maxHeight);
-        ViewGroup.LayoutParams params = sheet.getLayoutParams();
-        params.height = ViewGroup.LayoutParams.MATCH_PARENT;
-        sheet.setLayoutParams(params);
-        ViewCompat.setOnApplyWindowInsetsListener(requireView(), (view, insets) -> {
-            int keyboard = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
-            int navigation = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
-            int height = maxHeight + Math.max(0, keyboard - navigation);
-            if (behavior.getMaxHeight() != height) {
-                behavior.setMaxHeight(height);
-                sheet.requestLayout();
-            }
-            return insets;
-        });
-        ViewCompat.requestApplyInsets(requireView());
-    }
-
-    private void setupBackDispatcher() {
-        if (requireDialog() instanceof ComponentDialog dialog) dialog.getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), backCallback);
-    }
-
-    @Override
-    public void onDestroyView() {
-        backCallback.setEnabled(false);
-        super.onDestroyView();
     }
 }

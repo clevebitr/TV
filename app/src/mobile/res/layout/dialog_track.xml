@@ -24,44 +24,32 @@
             android:textSize="16sp"
             tools:text="選擇字幕" />
 
-        <com.fongmi.android.tv.ui.custom.DialogActionView
-            android:id="@+id/content"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/content_title"
-            android:focusable="false"
-            android:src="@drawable/ic_action_content" />
-
-        <com.fongmi.android.tv.ui.custom.DialogActionView
-            android:id="@+id/search"
-            android:contentDescription="@string/dialog_action_search_subtitles"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_action_search"
-            android:visibility="gone"
-            tools:visibility="visible" />
-
-        <com.fongmi.android.tv.ui.custom.DialogActionView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/choose"
-            android:contentDescription="@string/dialog_action_load_subtitles"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="16dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_action_choose"
             android:visibility="gone"
             tools:visibility="visible" />
 
-        <com.fongmi.android.tv.ui.custom.DialogActionView
-            android:id="@+id/setting"
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/subtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_action_setting"
+            android:src="@drawable/ic_action_subtitle"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:id="@+id/offset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_action_offset"
             android:visibility="gone"
             tools:visibility="visible" />
 
@@ -71,7 +59,6 @@
         android:id="@+id/recycler"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:nestedScrollingEnabled="false"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:overScrollMode="never"

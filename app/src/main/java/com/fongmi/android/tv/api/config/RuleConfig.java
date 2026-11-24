@@ -9,7 +9,7 @@ public class RuleConfig {
 
     private List<String> ads = List.of();
     private List<Rule> rules = List.of();
-    private volatile boolean dirty;
+    private boolean dirty;
 
     public static RuleConfig get() {
         return Loader.INSTANCE;
@@ -25,12 +25,11 @@ public class RuleConfig {
         return rules;
     }
 
-    synchronized void invalidate() {
+    void invalidate() {
         dirty = true;
     }
 
-    private synchronized void merge() {
-        if (!dirty) return;
+    private void merge() {
         List<String> ads = new ArrayList<>(VodConfig.get().getAds());
         ads.addAll(LiveConfig.get().getAds());
         this.ads = ads;

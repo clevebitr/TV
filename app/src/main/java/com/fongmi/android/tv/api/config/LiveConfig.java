@@ -2,6 +2,7 @@ package com.fongmi.android.tv.api.config;
 
 import android.text.TextUtils;
 
+import com.fongmi.android.tv.api.Decoder;
 import com.fongmi.android.tv.api.LiveApi;
 import com.fongmi.android.tv.api.loader.BaseLoader;
 import com.fongmi.android.tv.api.parser.LiveParser;
@@ -19,10 +20,7 @@ import com.fongmi.android.tv.setting.LiveSetting;
 import com.fongmi.android.tv.utils.UrlUtil;
 import com.github.catvod.bean.Header;
 import com.github.catvod.bean.Proxy;
-import com.github.catvod.utils.Auth;
-import com.github.catvod.utils.Decoder;
 import com.github.catvod.utils.Json;
-import com.github.catvod.utils.UriUtil;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
@@ -116,10 +114,9 @@ public class LiveConfig extends BaseConfig {
 
     @Override
     protected void load(Config config) throws Throwable {
-        Decoder.Content content = Decoder.load(UrlUtil.convert(config.getUrl()), TAG, Auth.Context.NONE);
-        String json = content.text();
+        String json = Decoder.getJson(UrlUtil.convert(config.getUrl()), TAG);
         if (Json.isObj(json)) checkJson(config, Json.parse(json).getAsJsonObject());
-        else parseText(config, content);
+        else parseText(config, json);
     }
 
     @Override
@@ -144,18 +141,21 @@ public class LiveConfig extends BaseConfig {
         load(new Callback());
     }
 
-    private void parseText(Config config, Decoder.Content content) {
-        Live live = new Live(UriUtil.getName(config.getUrl()), config.getUrl()).sync();
-        live.setAuth(content.successful() ? Auth.capture(config.getUrl(), Map.of(), content.url(), content.authorization()) : null);
+    private void parseText(Config config, String text) {
+        Live live = new Live(UrlUtil.getName(config.getUrl()), config.getUrl()).sync();
         lives = new ArrayList<>(List.of(live));
-        LiveParser.text(live, content.text());
+        LiveParser.text(live, text);
         setHome(config, live, false);
     }
 
     private void checkJson(Config config, JsonObject object) throws Throwable {
-        if (object.has("msg")) throw new Exception(object.get("msg").getAsString());
-        else if (object.has("urls")) parseDepot(config, object);
-        else parseConfig(config, object);
+        if (object.has("msg")) {
+            throw new Exception(object.get("msg").getAsString());
+        } else if (object.has("urls")) {
+            parseDepot(config, object);
+        } else {
+            parseConfig(config, object);
+        }
     }
 
     private void parseDepot(Config config, JsonObject object) throws Throwable {

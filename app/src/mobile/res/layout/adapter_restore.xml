@@ -31,9 +31,8 @@
 
     </androidx.appcompat.widget.LinearLayoutCompat>
 
-    <com.fongmi.android.tv.ui.custom.DialogActionView
+    <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/delete"
-        android:contentDescription="@string/dialog_action_delete_backup"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="?attr/selectableItemBackgroundBorderless"

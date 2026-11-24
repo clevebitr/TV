@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version name, e.g. 5.9.0 (default: app/build.gradle)"
+        description: "Release version name, e.g. 5.5.7 (default: app/build.gradle)"
         required: false
         type: string
       version_code:
@@ -26,6 +26,17 @@ permissions:
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  # Pinned media3 fork commit that provides the player AARs (lib-mpvplayer, lib-decoder-ffmpeg, ...).
+  MEDIA3_FORK_REPO: https://github.com/FongMi/media.git
+  MEDIA3_FORK_BRANCH: release-1.11.0-fongmi
+  MEDIA3_FORK_COMMIT: 3c2cbe8ac742c2fe15eff52f03eeb3b1b648848d
+  MEDIA3_MODULES: >-
+    lib-common lib-container lib-database lib-datasource lib-datasource-okhttp
+    lib-datasource-rtmp lib-decoder lib-decoder-ffmpeg lib-decoder-mpegh lib-effect
+    lib-exoplayer lib-exoplayer-dash lib-exoplayer-hls lib-exoplayer-rtsp
+    lib-exoplayer-smoothstreaming lib-extractor lib-mpvplayer lib-session lib-ui lib-ui-danmaku
 
 jobs:
   build:
@@ -56,12 +67,13 @@ jobs:
             exit 1
           fi
           compile_sdk=$(grep -oP '^compileSdk\s*=\s*"\K[^"]+' gradle/libs.versions.toml)
-          build_tools=$(grep -oP '^buildTools\s*=\s*"\K[^"]+' gradle/libs.versions.toml)
+          build_tools=$(grep -oP '^buildTools\s*=\s*"\K[^"]+' gradle/libs.versions.toml 2>/dev/null || true)
+          if [ -z "${build_tools}" ]; then build_tools="${compile_sdk}.0.0"; fi
           echo "compileSdk=${compile_sdk} buildTools=${build_tools}"
           yes | "${SDKMGR}" --licenses > /dev/null || true
           "${SDKMGR}" --install "platform-tools" "build-tools;${build_tools}" "platforms;android-${compile_sdk}" \
             || "${SDKMGR}" --install "platform-tools" "build-tools;${build_tools}" "platforms;android-${compile_sdk}.0"
-          # Newer SDK releases publish minor platform versions (android-37.0); link them for AGP.
+          # Newer SDK channels publish minor platform versions (android-37.0); link them for AGP.
           if [ ! -d "${SDK_ROOT}/platforms/android-${compile_sdk}" ] && [ -d "${SDK_ROOT}/platforms/android-${compile_sdk}.0" ]; then
             ln -sfn "${SDK_ROOT}/platforms/android-${compile_sdk}.0" "${SDK_ROOT}/platforms/android-${compile_sdk}"
           fi
@@ -80,7 +92,7 @@ jobs:
             name=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)
           fi
           if [ -z "${code}" ]; then
-            code=$(grep -oP 'getOrElse\(\K[0-9]+(?=\)\s*$)' app/build.gradle | head -n 1)
+            code=$(grep -oP 'versionCode\s+\K[0-9]+' app/build.gradle | head -n 1)
           fi
           if [ -z "${code}" ]; then
             code=$(date +%Y%m%d%H)
@@ -90,22 +102,39 @@ jobs:
           echo "tag=v${name}" >> "$GITHUB_OUTPUT"
           echo "Resolved version ${name} (${code})"
 
-      - name: Restore player artifacts
-        env:
-          MPV_AAR: ${{ secrets.PLAYER_AAR_MPV_BASE64 }}
-          FFMPEG_AAR: ${{ secrets.PLAYER_AAR_FFMPEG_BASE64 }}
+      - name: Restore media3 AAR cache
+        id: media3-cache
+        uses: actions/cache@v4
+        with:
+          path: media3-aars
+          key: media3-aars-${{ env.MEDIA3_FORK_COMMIT }}
+
+      - name: Build media3 AARs
+        if: steps.media3-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          mkdir -p app/libs
-          if [ -n "${MPV_AAR}" ] && [ -n "${FFMPEG_AAR}" ]; then
-            printf '%s' "${MPV_AAR}" | base64 -d > app/libs/lib-mpvplayer-release.aar
-            printf '%s' "${FFMPEG_AAR}" | base64 -d > app/libs/lib-decoder-ffmpeg-release.aar
-          elif [ -f app/libs/lib-mpvplayer-release.aar ] && [ -f app/libs/lib-decoder-ffmpeg-release.aar ]; then
-            echo "Using player artifacts committed in app/libs"
-          else
-            echo "::error::Missing player artifacts: set PLAYER_AAR_MPV_BASE64 / PLAYER_AAR_FFMPEG_BASE64 secrets or commit the AARs into app/libs."
-            exit 1
+          git clone --depth 1 --branch "${MEDIA3_FORK_BRANCH}" "${MEDIA3_FORK_REPO}" media3-src
+          cd media3-src
+          if [ "$(git rev-parse HEAD)" != "${MEDIA3_FORK_COMMIT}" ]; then
+            git fetch --depth 1 origin "${MEDIA3_FORK_COMMIT}"
+            git checkout -q FETCH_HEAD
           fi
+          git log -1 --format='media3 fork: %H %s'
+          chmod +x gradlew
+          tasks=""
+          for module in ${MEDIA3_MODULES}; do tasks="${tasks} :${module}:assembleRelease"; done
+          ./gradlew --no-daemon --stacktrace ${tasks}
+          cd ..
+          mkdir -p media3-aars
+          find media3-src/libraries \( -path "*/buildout/outputs/aar/*.aar" -o -path "*/build/outputs/aar/*.aar" \) -exec cp -v {} media3-aars/ \;
+          ls -l media3-aars
+
+      - name: Install media3 AARs
+        run: |
+          set -euo pipefail
+          test -d media3-aars
+          mkdir -p app/libs
+          cp -v media3-aars/*.aar app/libs/
           ls -l app/libs
 
       - name: Prepare signing config
@@ -145,7 +174,14 @@ jobs:
           ./gradlew --no-daemon --stacktrace \
             -PtvVersionName="${{ steps.version.outputs.version }}" \
             -PtvVersionCode="${{ steps.version.outputs.code }}" \
-            exportLeanbackReleaseApks exportMobileReleaseApks
+            assembleRelease
+
+      - name: Collect APKs
+        run: |
+          set -euo pipefail
+          mkdir -p Release/apk
+          find app/build/outputs/apk -name "*.apk" -exec cp -v {} Release/apk/ \;
+          ls -l Release/apk
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

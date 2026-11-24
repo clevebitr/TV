@@ -22,15 +22,14 @@
             android:textColor="@color/white"
             android:textSize="16sp" />
 
-        <com.fongmi.android.tv.ui.custom.DialogActionView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/debug"
-            android:layout_width="40dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/selector_chip_round"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/player_debug"
             android:focusable="true"
             android:focusableInTouchMode="true"
-            android:padding="8dp"
             android:src="@drawable/ic_action_debug" />
 
     </androidx.appcompat.widget.LinearLayoutCompat>

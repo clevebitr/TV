@@ -1,7 +1,5 @@
 <resources>
 
-    <style name="Control.Script" parent="Control" />
-
     <style name="Vod">
         <item name="cornerFamily">rounded</item>
     </style>

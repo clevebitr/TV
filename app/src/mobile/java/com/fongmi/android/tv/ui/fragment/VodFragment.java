@@ -10,6 +10,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentStatePagerAdapter;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.viewbinding.ViewBinding;
 import androidx.viewpager.widget.ViewPager;
@@ -34,7 +35,6 @@ import com.fongmi.android.tv.model.SiteViewModel;
 import com.fongmi.android.tv.ui.activity.HistoryActivity;
 import com.fongmi.android.tv.ui.activity.KeepActivity;
 import com.fongmi.android.tv.ui.activity.SearchActivity;
-import com.fongmi.android.tv.ui.adapter.CategoryPagerAdapter;
 import com.fongmi.android.tv.ui.adapter.TypeAdapter;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.dialog.FilterDialog;
@@ -122,10 +122,6 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         mBinding.type.setHasFixedSize(true);
         mBinding.type.setItemAnimator(null);
         mBinding.type.setAdapter(mAdapter = new TypeAdapter(this));
-        setPager();
-    }
-
-    private void setPager() {
         mBinding.pager.setAdapter(new PageAdapter(getChildFragmentManager()));
     }
 
@@ -135,7 +131,9 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     }
 
     private void setAdapter(Result result) {
-        setCategories(result);
+        mAdapter.addAll(mResult = result);
+        mBinding.pager.getAdapter().notifyDataSetChanged();
+        setFabVisible(0);
         hideProgress();
         showContent();
     }
@@ -183,7 +181,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
     }
 
     private void onFilter(View view) {
-        if (mAdapter.getItemCount() > 0) FilterDialog.create().filter(getFragment().getFilters()).show(this);
+        if (mAdapter.getItemCount() > 0) FilterDialog.create().filter(mAdapter.get(mBinding.pager.getCurrentItem()).getFilters()).show(this);
     }
 
     private boolean onMenuItemClick(MenuItem item) {
@@ -213,20 +211,10 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
 
     private void homeContent() {
         showProgress();
-        setCategories(Result.empty());
-        mViewModel.homeContent();
-    }
-
-    private void setCategories(Result result) {
-        clearPages();
-        mAdapter.setItems(mResult = result);
-        setPager();
         setFabVisible(0);
-    }
-
-    private void clearPages() {
-        for (Fragment fragment : getChildFragmentManager().getFragments()) if (fragment instanceof FilterDialog dialog) dialog.dismissAllowingStateLoss();
-        ((PageAdapter) mBinding.pager.getAdapter()).clearPages(mBinding.pager);
+        mAdapter.clear();
+        mViewModel.homeContent();
+        mBinding.pager.setAdapter(new PageAdapter(getChildFragmentManager()));
     }
 
     public Result getResult() {
@@ -251,15 +239,9 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
                 homeContent();
                 break;
             case CATEGORY:
-                if (mAdapter.getItemCount() > 0) getFragment().onRefresh();
+                getFragment().onRefresh();
                 break;
         }
-    }
-
-    @Subscribe(threadMode = ThreadMode.MAIN)
-    public void onHomeContent(RefreshEvent.HomeContent event) {
-        Site site = getHome();
-        if (event.matchesSite(site.getKey())) mViewModel.refreshHomeContent(site);
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -306,7 +288,6 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
 
     @Override
     public void onItemClick(int position, Class item) {
-        if (position < 0 || position >= mAdapter.getItemCount() || mAdapter.get(position) != item) return;
         mBinding.pager.setCurrentItem(position);
         mAdapter.setSelected(position);
     }
@@ -330,7 +311,7 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         EventBus.getDefault().unregister(this);
     }
 
-    class PageAdapter extends CategoryPagerAdapter {
+    class PageAdapter extends FragmentStatePagerAdapter {
 
         public PageAdapter(@NonNull FragmentManager fm) {
             super(fm);
@@ -346,6 +327,10 @@ public class VodFragment extends BaseFragment implements ConfigListener, SiteLis
         @Override
         public int getCount() {
             return mAdapter.getItemCount();
+        }
+
+        @Override
+        public void destroyItem(@NonNull ViewGroup container, int position, @NonNull Object object) {
         }
     }
 }

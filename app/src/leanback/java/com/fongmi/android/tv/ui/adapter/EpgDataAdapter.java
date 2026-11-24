@@ -38,15 +38,8 @@ public class EpgDataAdapter extends RecyclerView.Adapter<EpgDataAdapter.ViewHold
     }
 
     public void setSelected(EpgData selected) {
-        for (int i = 0; i < mItems.size(); i++) updateSelection(i, selected);
-    }
-
-    private void updateSelection(int position, EpgData selected) {
-        EpgData item = mItems.get(position);
-        boolean shouldSelect = selected.equals(item);
-        if (item.isSelected() == shouldSelect) return;
-        item.setSelected(shouldSelect);
-        notifyItemChanged(position, Boolean.TRUE);
+        for (EpgData item : mItems) item.setSelected(selected);
+        notifyDataSetChanged();
     }
 
     @Override
@@ -70,12 +63,6 @@ public class EpgDataAdapter extends RecyclerView.Adapter<EpgDataAdapter.ViewHold
         holder.binding.getRoot().setOnClickListener(v -> {
             if (!item.isFuture()) mListener.onItemClick(item);
         });
-    }
-
-    @Override
-    public void onBindViewHolder(@NonNull ViewHolder holder, int position, @NonNull List<Object> payloads) {
-        if (!payloads.isEmpty() && payloads.stream().allMatch(Boolean.TRUE::equals)) holder.binding.getRoot().setSelected(mItems.get(position).isSelected());
-        else onBindViewHolder(holder, position);
     }
 
     public interface OnClickListener {

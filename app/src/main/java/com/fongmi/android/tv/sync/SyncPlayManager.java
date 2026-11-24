@@ -10,12 +10,13 @@ import com.fongmi.android.tv.App;
 import com.fongmi.android.tv.R;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
-import com.github.catvod.utils.Task;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.IntConsumer;
 
 /**
@@ -62,6 +63,12 @@ public final class SyncPlayManager {
     private static final long SEEK_DRIFT = 1500;
     private static final long REMOTE_WINDOW = 1500;
     private static final long JOIN_GRACE = 1500;
+
+    private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "SyncPlay");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private static final class Loader {
         private static final SyncPlayManager INSTANCE = new SyncPlayManager();
@@ -155,7 +162,7 @@ public final class SyncPlayManager {
         this.connecting = true;
         updateStatus(ResUtil.getString(R.string.sync_play_connecting, endpoint.toString()));
         dispatchSession();
-        Task.execute(() -> {
+        EXECUTOR.execute(() -> {
             Session current = new Session(id);
             SyncPlayClient created = new SyncPlayClient(endpoint.getHost(), endpoint.getPort(), tls, current);
             current.client = created;
@@ -313,7 +320,7 @@ public final class SyncPlayManager {
             if (callback != null) callback.accept(-1);
             return;
         }
-        Task.execute(() -> {
+        EXECUTOR.execute(() -> {
             int result = SyncPlayClient.measure(endpoint.getHost(), endpoint.getPort(), tls);
             if (callback != null) App.post(() -> callback.accept(result));
         });

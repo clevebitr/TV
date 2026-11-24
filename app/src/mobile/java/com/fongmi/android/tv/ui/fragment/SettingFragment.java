@@ -1,7 +1,6 @@
 package com.fongmi.android.tv.ui.fragment;
 
 import android.view.LayoutInflater;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -19,7 +18,7 @@ import com.fongmi.android.tv.bean.Config;
 import com.fongmi.android.tv.bean.Live;
 import com.fongmi.android.tv.bean.Site;
 import com.fongmi.android.tv.databinding.FragmentSettingBinding;
-import com.fongmi.android.tv.db.BackupManager;
+import com.fongmi.android.tv.db.AppDatabase;
 import com.fongmi.android.tv.event.ConfigEvent;
 import com.fongmi.android.tv.event.RefreshEvent;
 import com.fongmi.android.tv.impl.Callback;
@@ -31,7 +30,6 @@ import com.fongmi.android.tv.setting.Setting;
 import com.fongmi.android.tv.ui.activity.HomeActivity;
 import com.fongmi.android.tv.ui.base.BaseFragment;
 import com.fongmi.android.tv.ui.dialog.ConfigDialog;
-import com.fongmi.android.tv.ui.dialog.DeviceConnectDialog;
 import com.fongmi.android.tv.ui.dialog.HistoryDialog;
 import com.fongmi.android.tv.ui.dialog.LiveDialog;
 import com.fongmi.android.tv.ui.dialog.RestoreDialog;
@@ -123,7 +121,6 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.cache.setOnClickListener(this::onCache);
         mBinding.backup.setOnClickListener(this::onBackup);
         mBinding.player.setOnClickListener(this::onPlayer);
-        mBinding.module.setOnClickListener(this::onModule);
         mBinding.danmaku.setOnClickListener(this::onDanmaku);
         mBinding.restore.setOnClickListener(this::onRestore);
         mBinding.version.setOnClickListener(this::onVersion);
@@ -139,19 +136,15 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         mBinding.wallDefault.setOnClickListener(this::setWallDefault);
         mBinding.wallRefresh.setOnClickListener(this::setWallRefresh);
         mBinding.wallRefresh.setOnLongClickListener(this::onWallHistory);
-        mBinding.settingToolbar.setOnMenuItemClickListener(this::onMenuItemClick);
-    }
-
-    private boolean onMenuItemClick(MenuItem item) {
-        if (item.getItemId() != R.id.deviceConnect) return false;
-        DeviceConnectDialog.show(requireActivity());
-        return true;
     }
 
     @Override
     public void setConfig(Config config) {
-        if (config.getUrl().startsWith("file")) PermissionUtil.requestFile(this, allGranted -> load(config));
-        else load(config);
+        if (config.getUrl().startsWith("file")) {
+            PermissionUtil.requestFile(this, allGranted -> load(config));
+        } else {
+            load(config);
+        }
     }
 
     private void load(Config config) {
@@ -253,10 +246,6 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
         getRoot().change(2);
     }
 
-    private void onModule(View view) {
-        getRoot().change(6);
-    }
-
     private void onDanmaku(View view) {
         getRoot().change(3);
     }
@@ -266,7 +255,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     }
 
     private void onVersion(View view) {
-        Updater.get().start(requireActivity(), true);
+        Updater.create().force().start(requireActivity());
     }
 
     private void setWallDefault(View view) {
@@ -322,7 +311,7 @@ public class SettingFragment extends BaseFragment implements ConfigListener, Sit
     }
 
     private void onBackup(View view) {
-        PermissionUtil.requestFile(this, allGranted -> BackupManager.backup(new Callback() {
+        PermissionUtil.requestFile(this, allGranted -> AppDatabase.backup(new Callback() {
             @Override
             public void success() {
                 Notify.show(R.string.backup_success);

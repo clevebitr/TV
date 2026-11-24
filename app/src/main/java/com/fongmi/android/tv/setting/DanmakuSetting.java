@@ -1,15 +1,10 @@
 package com.fongmi.android.tv.setting;
 
-import android.graphics.Typeface;
 import android.text.TextUtils;
-
-import androidx.annotation.Nullable;
 
 import androidx.media3.ui.danmaku.DanmakuConfig;
 
 import com.fongmi.android.tv.api.config.VodConfig;
-import com.fongmi.android.tv.player.mpv.MpvConfigFile;
-import com.fongmi.android.tv.player.subtitle.ExternalFont;
 import com.github.catvod.utils.Prefers;
 
 public class DanmakuSetting {
@@ -22,6 +17,8 @@ public class DanmakuSetting {
     private static final float MAX_STROKE_WIDTH_MULTIPLIER = 0.3f;
     private static final float MIN_PROJECTION_OFFSET = 0.02f;
     private static final float MAX_PROJECTION_OFFSET = 0.15f;
+    private static final long MIN_TIME_OFFSET_MS = -300000L;
+    private static final long MAX_TIME_OFFSET_MS = 300000L;
     private static final long MIN_DURATION_MS = 3000L;
     private static final long MAX_DURATION_MS = 15000L;
     private static final long MIN_FIXED_DURATION_MS = 2000L;
@@ -104,20 +101,6 @@ public class DanmakuSetting {
         Prefers.put("danmaku_text_bold", value);
     }
 
-    @Nullable
-    public static ExternalFont.Item getFont() {
-        return ExternalFont.find(Prefers.getString("danmaku_font", ""), MpvConfigFile.getSubtitleFontsDirectory());
-    }
-
-    public static void putFont(@Nullable ExternalFont.Item font) {
-        Prefers.put("danmaku_font", font == null ? "" : font.storageKey());
-    }
-
-    @Nullable
-    private static Typeface getTypeface() {
-        return ExternalFont.getTypeface(getFont());
-    }
-
     public static int getStyleMode() {
         return Prefers.getInt("danmaku_style_mode", DanmakuConfig.STYLE_STROKE);
     }
@@ -188,6 +171,14 @@ public class DanmakuSetting {
 
     public static void putFixedDurationMs(long value) {
         Prefers.put("danmaku_fixed_duration", Math.clamp(value, MIN_FIXED_DURATION_MS, MAX_FIXED_DURATION_MS));
+    }
+
+    public static long getTimeOffsetMs() {
+        return Math.clamp(Prefers.getLong("danmaku_time_offset", 0L), MIN_TIME_OFFSET_MS, MAX_TIME_OFFSET_MS);
+    }
+
+    public static void putTimeOffsetMs(long value) {
+        Prefers.put("danmaku_time_offset", Math.clamp(value, MIN_TIME_OFFSET_MS, MAX_TIME_OFFSET_MS));
     }
 
     public static int getMaxOnScreen() {
@@ -313,7 +304,6 @@ public class DanmakuSetting {
         putTextScale(config.textScale);
         putTransparency(config.transparency);
         putTextBold(config.textBold);
-        putFont(null);
         putStyleMode(config.styleMode);
         putShadowTransparency(config.shadowTransparency);
         putStrokeWidthMultiplier(config.strokeWidthMultiplier);
@@ -327,6 +317,7 @@ public class DanmakuSetting {
         DanmakuConfig config = DanmakuConfig.DEFAULT;
         putDurationMs(config.durationMs);
         putFixedDurationMs(config.fixedDurationMs);
+        putTimeOffsetMs(config.timeOffsetMs);
     }
 
     public static void resetDensity() {
@@ -356,7 +347,6 @@ public class DanmakuSetting {
                 .setTextScale(getTextScale())
                 .setTransparency(getTransparency())
                 .setTextBold(isTextBold())
-                .setTypeface(getTypeface())
                 .setStyleMode(getStyleMode())
                 .setShadowTransparency(getShadowTransparency())
                 .setStrokeWidthMultiplier(getStrokeWidthMultiplier())
@@ -366,6 +356,7 @@ public class DanmakuSetting {
                 .setColorMode(getColorMode())
                 .setDurationMs(getDurationMs())
                 .setFixedDurationMs(getFixedDurationMs())
+                .setTimeOffsetMs(getTimeOffsetMs())
                 .setMaxOnScreen(getMaxOnScreen())
                 .setScrollAreaRatio(getScrollAreaRatio())
                 .setScrollGapRatio(getScrollGapRatio())

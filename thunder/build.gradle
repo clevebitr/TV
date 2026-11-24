@@ -10,7 +10,6 @@ android {
     defaultConfig {
         minSdk libs.versions.minSdk.get().toInteger()
         targetSdk libs.versions.targetSdk.get().toInteger()
-        consumerProguardFiles 'consumer-rules.pro'
     }
 
     compileOptions {
@@ -18,11 +17,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
-
-    packaging.jniLibs.keepDebugSymbols.add('**/*.so')
 }
 
 dependencies {
-    compileOnly project(':catvod')
+    implementation project(':catvod')
     coreLibraryDesugaring libs.desugar
 }

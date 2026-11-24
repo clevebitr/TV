@@ -2,9 +2,6 @@ package com.github.catvod.net.interceptor;
 
 import androidx.annotation.NonNull;
 
-import com.github.catvod.utils.Auth;
-import com.google.common.net.HttpHeaders;
-
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,7 +26,6 @@ public class RequestInterceptor implements Interceptor {
     @Override
     public Response intercept(@NonNull Chain chain) throws IOException {
         Request request = chain.request();
-        if (request.tag(Auth.Context.class) != null || request.header(HttpHeaders.AUTHORIZATION) != null || request.url().uri().getUserInfo() != null) return chain.proceed(request);
         Request.Builder builder = request.newBuilder();
         HttpUrl url = request.url();
         checkAuth(url, builder);
