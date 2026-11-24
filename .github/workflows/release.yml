@@ -59,7 +59,13 @@ jobs:
           build_tools=$(grep -oP '^buildTools\s*=\s*"\K[^"]+' gradle/libs.versions.toml)
           echo "compileSdk=${compile_sdk} buildTools=${build_tools}"
           yes | "${SDKMGR}" --licenses > /dev/null || true
-          "${SDKMGR}" --install "platform-tools" "platforms;android-${compile_sdk}" "build-tools;${build_tools}"
+          "${SDKMGR}" --install "platform-tools" "build-tools;${build_tools}" "platforms;android-${compile_sdk}" \
+            || "${SDKMGR}" --install "platform-tools" "build-tools;${build_tools}" "platforms;android-${compile_sdk}.0"
+          # Newer SDK releases publish minor platform versions (android-37.0); link them for AGP.
+          if [ ! -d "${SDK_ROOT}/platforms/android-${compile_sdk}" ] && [ -d "${SDK_ROOT}/platforms/android-${compile_sdk}.0" ]; then
+            ln -sfn "${SDK_ROOT}/platforms/android-${compile_sdk}.0" "${SDK_ROOT}/platforms/android-${compile_sdk}"
+          fi
+          ls -1 "${SDK_ROOT}/platforms"
 
       - name: Resolve version
         id: version
