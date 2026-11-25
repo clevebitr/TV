@@ -176,7 +176,7 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
 
     @Override
     public boolean hasMedia() {
-        return player != null && !player.isEmpty();
+        return player != null && player.getMediaItemCount() > 0;
     }
 
     public boolean isPortrait() {
