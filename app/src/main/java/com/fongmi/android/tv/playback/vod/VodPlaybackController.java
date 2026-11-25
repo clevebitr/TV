@@ -113,6 +113,41 @@ public class VodPlaybackController {
         refresh();
     }
 
+    /**
+     * Switches to an episode identified by its name (then index) without depending on the caller's
+     * episode list. Used by the watch-together client, which may be on another flag or crawler site.
+     */
+    public boolean selectEpisode(String name, int index) {
+        if (!state.hasFlags() || name == null || name.isEmpty()) return false;
+        Flag current = state.getFlag();
+        Episode found = findEpisode(current, name, index);
+        Flag target = current;
+        if (found == null) {
+            for (Flag flag : state.getFlags()) {
+                if (flag == current) continue;
+                found = findEpisode(flag, name, -1);
+                if (found == null) continue;
+                target = flag;
+                break;
+            }
+        }
+        if (found == null) return false;
+        if (target != current) {
+            for (Flag flag : state.getFlags()) flag.setSelected(target);
+            host.renderFlagSelection(target);
+            host.renderEpisodes(target.getEpisodes());
+            host.renderQualityVisible(false);
+        }
+        if (target != current || !found.isSelected()) selectEpisode(found);
+        return true;
+    }
+
+    private Episode findEpisode(Flag flag, String name, int index) {
+        for (Episode episode : flag.getEpisodes()) if (name.equals(episode.getName())) return episode;
+        if (index < 0 || index >= flag.getEpisodes().size()) return null;
+        return flag.getEpisodes().get(index);
+    }
+
     public void selectQuality(Result result) {
         if (!state.hasEpisode()) return;
         state.setQuality(result);

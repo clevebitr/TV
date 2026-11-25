@@ -8,9 +8,9 @@ import java.util.Objects;
 /**
  * Playable item exchanged through the Syncplay {@code Set.file} message.
  * <p>
- * The wire format is {@code episode \u0001 siteKey \u0001 vodId}: the first field stays readable for
- * other Syncplay clients, while the source identity allows our clients to switch to the same
- * crawler site before selecting the episode.
+ * The wire format is {@code episode \u0001 siteKey \u0001 vodId \u0001 index \u0001 vodName}: the first
+ * field stays readable for other Syncplay clients, while the extra fields let our clients find the
+ * same episode locally (same drama, possibly another crawler site) or switch to the remote source.
  */
 public final class SyncPlayItem {
 
@@ -20,6 +20,7 @@ public final class SyncPlayItem {
     private final String episode;
     private final String site;
     private final String vodId;
+    private final String vodName;
     private final int index;
 
     public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId) {
@@ -27,10 +28,15 @@ public final class SyncPlayItem {
     }
 
     public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId, int index) {
+        this(episode, site, vodId, index, "");
+    }
+
+    public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId, int index, @Nullable String vodName) {
         this.episode = normalize(episode);
         this.site = normalize(site);
         this.vodId = normalize(vodId);
         this.index = index;
+        this.vodName = normalize(vodName);
     }
 
     public static SyncPlayItem local(@Nullable String episode) {
@@ -42,7 +48,8 @@ public final class SyncPlayItem {
         String[] parts = value.split(String.valueOf(SEPARATOR), -1);
         if (parts.length < 3) return new SyncPlayItem(value, "", "");
         int index = parts.length > 3 ? parseInt(parts[3]) : -1;
-        return new SyncPlayItem(parts[0], parts[1], parts[2], index);
+        String vodName = parts.length > 4 ? parts[4] : "";
+        return new SyncPlayItem(parts[0], parts[1], parts[2], index, vodName);
     }
 
     private static int parseInt(String value) {
@@ -85,6 +92,14 @@ public final class SyncPlayItem {
         return index;
     }
 
+    public String getVodName() {
+        return vodName;
+    }
+
+    public boolean hasVodName() {
+        return !vodName.isEmpty();
+    }
+
     public boolean hasEpisode() {
         return !episode.isEmpty();
     }
@@ -106,8 +121,10 @@ public final class SyncPlayItem {
 
     public String encode() {
         if (!hasSource()) return episode;
-        String value = episode + SEPARATOR + site + SEPARATOR + vodId + SEPARATOR + index;
-        return value.length() > MAX_LENGTH ? episode : value;
+        String source = episode + SEPARATOR + site + SEPARATOR + vodId + SEPARATOR + index;
+        String full = source + SEPARATOR + vodName;
+        if (full.length() <= MAX_LENGTH) return full;
+        return source.length() <= MAX_LENGTH ? source : episode;
     }
 
     @Override

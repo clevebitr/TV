@@ -2,6 +2,7 @@ package com.fongmi.android.tv.sync;
 
 import android.os.SystemClock;
 import android.text.TextUtils;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -14,6 +15,7 @@ import com.fongmi.android.tv.utils.ResUtil;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -100,6 +102,10 @@ public final class SyncPlayManager {
     private volatile Player player;
     private volatile boolean localPlaying = true;
     private volatile EpisodeHandler episodeHandler;
+    private volatile SyncPlayItem localItem;
+    private volatile SyncPlayItem pendingRemote;
+    private volatile String pendingRemoteBy = "";
+    private volatile boolean applyingRemote;
     private volatile String authority;
     private volatile boolean remotePaused;
     private volatile long remoteUntil;
@@ -115,6 +121,11 @@ public final class SyncPlayManager {
 
     public void setEpisodeHandler(@Nullable EpisodeHandler handler) {
         this.episodeHandler = handler;
+        if (handler == null) return;
+        // A file change may have arrived while the player screen was paused or still loading,
+        // retry it as soon as the screen can switch episodes again.
+        applyPendingRemote(false);
+        if (pendingRemote == null) adoptAuthority();
     }
 
     public void clearEpisodeHandler(@Nullable EpisodeHandler handler) {
@@ -244,6 +255,10 @@ public final class SyncPlayManager {
         room = "";
         username = "";
         endpoint = "";
+        localItem = null;
+        pendingRemote = null;
+        pendingRemoteBy = "";
+        authority = null;
         dispatchUsers();
         dispatchRtt();
     }
@@ -276,6 +291,22 @@ public final class SyncPlayManager {
     }
 
     public void onLocalMediaChanged() {
+        SyncPlayItem item = getLocalItem();
+        if (item.hasEpisode()) localItem = item;
+        pushLocalMediaChange();
+    }
+
+    /**
+     * Publishes the episode that just started playing. The activity passes the item explicitly so a
+     * paused screen (or a playback started while the screen is not resumed) cannot fall back to the
+     * generic media title.
+     */
+    public void onLocalMediaChanged(@Nullable SyncPlayItem item) {
+        if (item != null && item.hasEpisode()) localItem = item;
+        pushLocalMediaChange();
+    }
+
+    private void pushLocalMediaChange() {
         syncFile();
         SyncPlayClient current = client;
         Player target = player;
@@ -286,16 +317,6 @@ public final class SyncPlayManager {
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
     }
 
-    private void pushLocalState(boolean doSeek) {
-        SyncPlayClient current = client;
-        Player target = player;
-        if (current == null || target == null) return;
-        current.setLocalState(target.getPosition() / 1000.0, !target.isPlayWhenReady());
-        current.sendState(doSeek, true);
-        localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
-        localPlaying = target.isPlayWhenReady();
-    }
-
     private void syncFile() {
         SyncPlayClient current = client;
         Player target = player;
@@ -303,6 +324,7 @@ public final class SyncPlayManager {
         SyncPlayItem item = getLocalItem();
         if (!item.hasEpisode()) return;
         long duration = target.getDuration();
+        log("publish file=%s", item.encode());
         current.sendFile(item.encode(), duration > 0 ? duration / 1000.0 : 0);
     }
 
@@ -312,8 +334,14 @@ public final class SyncPlayManager {
             SyncPlayItem item = handler.getCurrentItem();
             if (item != null && item.hasEpisode()) return item;
         }
+        SyncPlayItem cached = localItem;
+        if (cached != null && cached.hasEpisode()) return cached;
         Player target = player;
         return SyncPlayItem.local(target == null ? "" : target.getMediaTitle());
+    }
+
+    private static boolean sameEpisode(@Nullable SyncPlayItem left, @Nullable SyncPlayItem right) {
+        return left != null && right != null && left.hasEpisode() && right.hasEpisode() && left.getEpisode().equalsIgnoreCase(right.getEpisode());
     }
 
     private boolean isRemote(boolean playWhenReady) {
@@ -373,15 +401,55 @@ public final class SyncPlayManager {
         for (SyncPlayUser user : users) {
             if (!name.equals(user.getName())) continue;
             SyncPlayItem item = SyncPlayItem.decode(user.getRawFile());
-            if (!item.hasEpisode() || item.matches(getLocalItem())) {
+            if (!item.hasEpisode() || item.matches(getLocalItem()) || sameEpisode(getLocalItem(), item)) {
                 authority = null;
                 return;
             }
-            EpisodeHandler handler = episodeHandler;
-            authority = null;
-            if (handler != null) handler.switchTo(item);
+            // Keep the authority until the screen is actually able to switch, so a later resume retries.
+            if (episodeHandler == null) return;
+            if (episodeHandler.switchTo(item)) authority = null;
             return;
         }
+    }
+
+    /** Applies a remote file that could not be handled yet (screen paused, episodes not loaded...). */
+    public void flushPendingRemote() {
+        if (applyingRemote) return;
+        applyPendingRemote(false);
+        if (pendingRemote == null) adoptAuthority();
+    }
+
+    private void applyPendingRemote(boolean notifyFailure) {
+        SyncPlayItem item = pendingRemote;
+        if (item == null) return;
+        EpisodeHandler handler = episodeHandler;
+        if (handler == null) return;
+        if (applyingRemote) return;
+        SyncPlayItem local = getLocalItem();
+        if (item.matches(local) || sameEpisode(local, item)) {
+            pendingRemote = null;
+            pendingRemoteBy = "";
+            return;
+        }
+        applyingRemote = true;
+        try {
+            log("apply remote %s (local %s)", item.encode(), local.encode());
+            if (handler.switchTo(item)) {
+                String by = pendingRemoteBy;
+                pendingRemote = null;
+                pendingRemoteBy = "";
+                authority = null;
+                if (!TextUtils.isEmpty(by)) toast(ResUtil.getString(R.string.sync_play_file, by, item.getEpisode()));
+            } else if (notifyFailure) {
+                toast(ResUtil.getString(R.string.sync_play_switch_fail, item.getEpisode()));
+            }
+        } finally {
+            applyingRemote = false;
+        }
+    }
+
+    private static void log(String format, Object... args) {
+        Log.d("SyncPlay", args.length == 0 ? format : String.format(Locale.ROOT, format, args));
     }
 
     private void addUser(String name) {
@@ -391,6 +459,20 @@ public final class SyncPlayManager {
         list.add(new SyncPlayUser(room, name, "", false));
         users = list.toArray(new SyncPlayUser[0]);
         dispatchUsers();
+    }
+
+    /** Keeps the cached user list in sync with {@code Set.user.file} updates, not only with List replies. */
+    private void updateUserFile(String name, String file) {
+        List<SyncPlayUser> list = new ArrayList<>(List.of(users));
+        for (int i = 0; i < list.size(); i++) {
+            SyncPlayUser user = list.get(i);
+            if (!user.getName().equals(name)) continue;
+            if (user.getRawFile().equals(file)) return;
+            list.set(i, new SyncPlayUser(user.getRoom(), user.getName(), file, user.isReady()));
+            users = list.toArray(new SyncPlayUser[0]);
+            dispatchUsers();
+            return;
+        }
     }
 
     private void removeUser(String name) {
@@ -460,8 +542,8 @@ public final class SyncPlayManager {
                     if (TextUtils.isEmpty(name)) {
                         authority = null;
                         toast(ResUtil.getString(R.string.sync_play_only_user));
-                        syncFile();
-                        pushLocalState(true);
+                        // The empty room must adopt our own episode as the room timeline.
+                        onLocalMediaChanged();
                     } else {
                         authority = name;
                         toast(ResUtil.getString(R.string.sync_play_follow_user, name));
@@ -491,6 +573,7 @@ public final class SyncPlayManager {
                 users = filtered.toArray(new SyncPlayUser[0]);
                 dispatchUsers();
                 adoptAuthority();
+                applyPendingRemote(false);
             });
         }
 
@@ -504,15 +587,16 @@ public final class SyncPlayManager {
         public void onFileChanged(String name, String file) {
             if (!isCurrent()) return;
             App.post(() -> {
-                if (!isCurrent() || name.equals(username)) return;
+                if (!isCurrent()) return;
+                updateUserFile(name, file);
+                if (name.equals(username)) return;
                 SyncPlayItem item = SyncPlayItem.decode(file);
-                if (!item.hasEpisode() || item.matches(getLocalItem())) return;
-                EpisodeHandler handler = episodeHandler;
-                if (handler != null && handler.switchTo(item)) {
-                    toast(ResUtil.getString(R.string.sync_play_file, name, item.getEpisode()));
-                } else {
-                    toast(ResUtil.getString(R.string.sync_play_switch_fail, item.getEpisode()));
-                }
+                log("file from %s: %s", name, file);
+                SyncPlayItem local = getLocalItem();
+                if (!item.hasEpisode() || item.matches(local) || sameEpisode(local, item)) return;
+                pendingRemote = item;
+                pendingRemoteBy = name;
+                applyPendingRemote(true);
             });
         }
 

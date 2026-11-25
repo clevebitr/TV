@@ -199,6 +199,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          # Keep a manually created tag on the commit that was actually built instead of the
+          # repository default branch (that is how 5.5.6-5.5.9 all ended up pointing at one commit).
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.version.outputs.version }}
           draft: ${{ inputs.draft || false }}
           generate_release_notes: true

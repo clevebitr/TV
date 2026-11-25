@@ -13,6 +13,7 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -142,8 +143,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             String episode = item == null || item.getName() == null ? "" : item.getName();
             String siteKey = site == null ? "" : site.getKey();
             String vodId = history != null && siteKey.equals(history.getSiteKey()) ? history.getVodId() : "";
+            String vodName = history == null ? "" : history.getVodName();
             int index = mEpisodeAdapter == null || item == null ? -1 : mEpisodeAdapter.getItems().indexOf(item);
-            return new SyncPlayItem(episode, siteKey, vodId, index);
+            return new SyncPlayItem(episode, siteKey, vodId, index, vodName);
         }
 
         @Override
@@ -151,12 +153,13 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             if (mVod == null || !item.hasEpisode()) return false;
             Site site = getSite();
             String current = site == null ? "" : site.getKey();
-            if (!item.hasSource() || item.getSite().equals(current)) {
-                Episode local = findEpisode(item);
-                if (local == null) return false;
-                if (!local.isSelected()) mVod.selectEpisode(local);
-                return true;
-            }
+            String vodName = mHistory == null ? "" : mHistory.getVodName();
+            boolean sameVod = !item.hasVodName() || vodName.isEmpty() || item.getVodName().equals(vodName);
+            Log.d("SyncPlay", "switchTo episode=" + item.getEpisode() + " site=" + item.getSite() + " vod=" + item.getVodId() + " index=" + item.getIndex() + " sameVod=" + sameVod);
+            // Always prefer an episode that already exists locally (possibly on another crawler site);
+            // only switch the source when this drama has no matching episode here.
+            if (sameVod && mVod.selectEpisode(item.getEpisode(), item.getIndex())) return true;
+            if (!item.hasSource() || item.getSite().equals(current)) return false;
             if (item.getSite().equals(lastSite) && SystemClock.elapsedRealtime() - lastSwitchAt < SOURCE_SWITCH_GUARD) return true;
             Site target = VodConfig.get().getSite(item.getSite());
             if (target == null || target.getKey().isEmpty()) return false;
@@ -172,14 +175,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
             mVod.selectSource(vod);
             Notify.show(ResUtil.getString(R.string.sync_play_source_changed, target.getName()));
             return true;
-        }
-
-        private Episode findEpisode(SyncPlayItem item) {
-            if (mEpisodeAdapter == null) return null;
-            for (Episode episode : mEpisodeAdapter.getItems()) if (item.getEpisode().equals(episode.getName())) return episode;
-            int index = item.getIndex();
-            if (index < 0 || index >= mEpisodeAdapter.getItemCount()) return null;
-            return mEpisodeAdapter.getItems().get(index);
         }
     };
 
@@ -354,18 +349,6 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         checkId();
     }
 
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        SyncPlayManager.get().setEpisodeHandler(syncEpisodeHandler);
-    }
-
-    @Override
-    protected void onPause() {
-        SyncPlayManager.get().clearEpisodeHandler(syncEpisodeHandler);
-        super.onPause();
-    }
 
     @Override
     protected void initView(Bundle savedInstanceState) {
@@ -628,7 +611,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     public void startPlayback(Result result, boolean useParse, long startPositionMs, History history, Episode episode) {
         syncEpisode = episode;
         startPlayer(getHistoryKey(), result, useParse, getSite().getTimeout(), startPositionMs, VodPlaybackMedia.metadata(history, episode));
-        SyncPlayManager.get().onLocalMediaChanged();
+        // Publish the exact episode even when no episode handler is registered (paused screen / PiP).
+        SyncPlayManager.get().onLocalMediaChanged(syncEpisodeHandler.getCurrentItem());
     }
 
     @Override
@@ -669,6 +653,8 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     public void renderEpisodes(List<Episode> items) {
         setEpisodeAdapter(items);
         selectPendingEpisode(items);
+        // The remote episode may have arrived while this list was still loading.
+        SyncPlayManager.get().flushPendingRemote();
     }
 
     private void selectPendingEpisode(List<Episode> items) {
@@ -680,21 +666,9 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         pendingEpisode = null;
         pendingSite = null;
         pendingIndex = -1;
-        for (Episode item : items) {
-            if (!name.equals(item.getName())) continue;
-            App.post(() -> {
-                if (mVod != null && !item.isSelected()) mVod.selectEpisode(item);
-            });
-            return;
-        }
-        if (index >= 0 && index < items.size()) {
-            Episode item = items.get(index);
-            App.post(() -> {
-                if (mVod != null && !item.isSelected()) mVod.selectEpisode(item);
-            });
-            return;
-        }
-        Notify.show(ResUtil.getString(R.string.sync_play_switch_fail, name));
+        App.post(() -> {
+            if (mVod != null && !mVod.selectEpisode(name, index)) Notify.show(ResUtil.getString(R.string.sync_play_switch_fail, name));
+        });
     }
 
     @Override
@@ -1725,6 +1699,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     protected void onStart() {
         super.onStart();
+        SyncPlayManager.get().setEpisodeHandler(syncEpisodeHandler);
         mClock.stop().start();
         setAudioOnly(false);
         setStop(false);
@@ -1733,6 +1708,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     protected void onStop() {
         super.onStop();
+        SyncPlayManager.get().clearEpisodeHandler(syncEpisodeHandler);
         if (PlayerSetting.isBackgroundOff()) mClock.stop();
         if (!isAudioOnly()) setStop(true);
     }

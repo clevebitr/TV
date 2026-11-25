@@ -160,9 +160,62 @@ USERS(1)
 
 ---
 
+## BUG-4 换集跟随在实际设备上仍失败 — 已修复（`5.5.10-syncplay`）
+
+**现象**：A 换集后，B 收到 `Set.file` 但停留在原集（或提示「无法切换」），只在部分场景（同站点、双方都在播放页前台、剧集列表已加载）才偶发成功。
+
+**根因（按影响排序）**
+
+1. **跨源时不先匹配本地剧集**：`VideoActivity` 的 `switchTo()` 只在「对端站点 == 本地站点」时才在本地列表按名字找集；两端用了同一个剧的不同站点/不同搜索条目时，B 会直接走切源分支。目标站点在 B 的配置里不存在 → 直接失败（虽然 B 本地明明有同一集）。这与 BUG-3 里写的「先本地按名字匹配，再切源」不一致。
+2. **`Set.user.file` 没有回写用户列表缓存**：`SyncPlayManager.users` 只在 `List` 回复时更新。房主换集后缓存里仍是旧文件，`adoptAuthority()` 会用旧集把已经跟到新集的 B **拉回旧集**（本地 JVM 驱动已复现：`switchTo(第2集)` 后紧跟 `switchTo(第1集)`）。
+3. **播放页不在前台时文件事件直接丢失**：`EpisodeHandler` 只在 `onResume/onPause` 注册；B 在后台/PiP/播放暂挂时收到换集，`handler == null` 就只弹一个失败提示，恢复后也不会补切。
+4. **发布集数依赖 handler 注册**：`startPlayback()` 里调无参 `onLocalMediaChanged()`，`getLocalItem()` 在 handler 为 null 时回退到 `PlayerManager.getMediaTitle()`，而它是**剧名**（每集相同），于是 B 认为文件没变。
+5. **只搜索当前线路（flag）**：A 切到另一条线路的剧集时，B 的 `EpisodeAdapter` 只有当前线路的集数，找不到就失败。
+
+**已实施修复**
+
+- `SyncPlayItem` 增加第 5 段 `vodName`（剧名；超长时自动退回 4 段/纯集名），接收端据此判断是否同一部剧；仍兼容旧的 3/4 段格式。
+- `VodPlaybackController#selectEpisode(name, index)`：按**名字 → 序号**在**所有线路**里查找，必要时先切线路再选集；找不到返回 false。
+- 两端 `VideoActivity#switchTo()` 改为：先本地（同一部剧）按名字/序号选集，成功即返回；找不到且对端带源时才切源。
+- `SyncPlayManager` 增加 `localItem` / `pendingRemote` / `flushPendingRemote()`：
+  - 收到的远端换集若当时 handler 不可用，先缓存，`onStart` 注册 handler 或剧集列表刷新后自动补切；
+  - `Set.user.file` 即时更新用户列表缓存，`adoptAuthority()` 不再用旧集覆盖；
+  - `EpisodeHandler` 从 `onResume/onPause` 挪到 `onStart/onStop`（PiP、权限弹窗等 onPause-only 场景不再丢事件）；
+  - `startPlayback()` 显式 `onLocalMediaChanged(getCurrentItem())`，不再回退到剧名；
+  - 关键路径加 `Log.d("SyncPlay", ...)`（`adb logcat -s SyncPlay` 可看收发/切换过程）。
+- 跨源待选集数改用 `selectEpisode(name, index)`，并保留「找不到」提示。
+
+**本地验证（真 Syncplay 服务器 + JVM 驱动，含 manager 真实代码）**
+
+```
+--- A switches to ep2 while B has no handler
+[SyncPlay] file from alice: 第2集|siteA|vod1|1|测试剧集
+B local=第1集 (handler 未注册，先缓存)
+--- B screen resumes
+[SyncPlay] apply remote 第2集...
+[B] switchTo(第2集 idx=1 site=siteA vodName=测试剧集)
+B local=第2集
+--- A switches to ep3
+[B] switchTo(第3集 idx=2 ...)
+B local=第3集
+ALL OK
+```
+
+**回归验证清单**
+
+- [ ] 两端同站点：A 换集 → B 3 秒内跟进，且不会被拉回
+- [ ] 两端不同站点/不同搜索条目（同一部剧）：B 按本地同名/同序号集切换，不再误切源
+- [ ] B 在后台/PiP 时 A 换集，B 回到播放页后自动跟到当前集
+- [ ] A 切到另一条线路的剧集，B 也能跟到
+- [ ] 用户在播放页内连续换集不会来回跳（防回环）
+
+---
+
 ## 附：本轮发布信息
 
 - 分支：`syncplay-5.5.6`（`fongmi` 保持 5.8.9；旧状态在 `backup/5.8.9-syncplay`）
+- 本次版本：`5.5.10-syncplay`（versionCode `560`，tag `v5.5.10-syncplay`）
 - CI：`.github/workflows/release.yml`（先从 `FongMi/media` 的 `3c2cbe8ac7` 构建 20 个 media3 AAR，再打 4 个 APK 并发布）
+  - 发布步骤加了 `target_commitish: ${{ github.sha }}`：之前手动触发时 tag 被建在默认分支，`v5.5.6`~`v5.5.9` 四个 tag 全部指向 `2a3115ee6`；现在保证 tag 指向实际构建的提交。
 - 签名：仓库 Secrets `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`（keystore 备份在维护者本机 `~/.tv-signing/`）
 - 已修：`Player is accessed on the wrong thread`（连接前在主线程快照播放器状态）；自定义服务器/昵称/房间持久化；输入框文字贴边
