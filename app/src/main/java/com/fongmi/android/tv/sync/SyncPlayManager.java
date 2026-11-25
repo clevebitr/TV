@@ -187,6 +187,7 @@ public final class SyncPlayManager {
         this.endpoint = endpoint.toString();
         this.room = room;
         this.username = nickname;
+        log("connect %s room=%s nick=%s tls=%s", endpoint, room, nickname, tls);
         this.users = new SyncPlayUser[0];
         this.rtt = -1;
         this.connecting = true;
@@ -526,6 +527,7 @@ public final class SyncPlayManager {
                 room = roomName;
                 joinedAt = SystemClock.elapsedRealtime();
                 connecting = false;
+                log("hello user=%s room=%s version=%s", name, roomName, version);
                 updateStatus(ResUtil.getString(R.string.sync_play_server_info, endpoint));
                 dispatchSession();
                 requestUsers();
@@ -620,6 +622,7 @@ public final class SyncPlayManager {
         if (!session.isCurrent()) return;
         App.post(() -> {
             if (!session.isCurrent()) return;
+            log("closed: %s", message);
             close();
             String text = ResUtil.getString(R.string.sync_play_disconnected, message);
             updateStatus(text);

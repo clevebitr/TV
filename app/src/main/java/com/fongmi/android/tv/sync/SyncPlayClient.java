@@ -14,6 +14,8 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSocket;
@@ -60,6 +62,11 @@ public class SyncPlayClient {
     private static final int HANDSHAKE_TIMEOUT = 15000;
 
     private final Object writeLock = new Object();
+    private final ExecutorService writer = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "SyncPlayWriter");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final String host;
     private final int port;
     private final boolean tls;
@@ -209,7 +216,7 @@ public class SyncPlayClient {
             info.put("features", feature);
             JSONObject hello = new JSONObject();
             hello.put("Hello", info);
-            send(hello);
+            sendNow(hello);
         } catch (Exception e) {
             throw new IOException(e.getMessage(), e);
         }
@@ -278,7 +285,43 @@ public class SyncPlayClient {
         }
     }
 
-    private void send(JSONObject message) throws IOException {
+    /**
+     * Queues a message for the writer thread. Syncplay callbacks run on the main thread, and a TLS
+     * write (or close) there throws {@link android.os.NetworkOnMainThreadException} on devices that
+     * enable strict mode, which used to silently drop every {@code Set.file} / {@code State}.
+     */
+    private void send(JSONObject message) {
+        final byte[] data;
+        try {
+            data = (message.toString() + "\r\n").getBytes(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return;
+        }
+        try {
+            writer.execute(() -> write(data));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void write(byte[] data) {
+        OutputStream stream = output;
+        if (closed || stream == null) return;
+        try {
+            synchronized (writeLock) {
+                stream.write(data);
+                stream.flush();
+            }
+        } catch (Exception e) {
+            String message = e.getMessage() == null ? e.toString() : e.getMessage();
+            if (closed) return;
+            closed = true;
+            Socket current = socket;
+            if (current != null) closeQuietly(current);
+            listener.onClosed(message);
+        }
+    }
+
+    private void sendNow(JSONObject message) throws IOException {
         if (closed) throw new IOException("连接已断开");
         OutputStream stream = output;
         if (stream == null) throw new IOException("尚未连接");
@@ -305,15 +348,25 @@ public class SyncPlayClient {
         Socket current = socket;
         if (closed) return;
         closed = true;
+        writer.shutdown();
         if (current != null) closeQuietly(current);
         listener.onClosed(reason);
     }
 
     public void close() {
-        if (closed) return;
-        closed = true;
-        Socket current = socket;
-        if (current != null) closeQuietly(current);
+        if (!closed) {
+            closed = true;
+            final Socket current = socket;
+            try {
+                // TLS close writes a close_notify record, so it must run off the main thread too.
+                writer.execute(() -> {
+                    if (current != null) closeQuietly(current);
+                });
+            } catch (Exception e) {
+                if (current != null) closeQuietly(current);
+            }
+        }
+        writer.shutdown();
     }
 
     private void handle(String line) {
@@ -391,6 +444,7 @@ public class SyncPlayClient {
     private void handleError(@Nullable JSONObject error) {
         String message = error == null ? "" : error.optString("message", "");
         closed = true;
+        writer.shutdown();
         Socket current = socket;
         if (current != null) closeQuietly(current);
         listener.onClosed(message.isEmpty() ? "服务器错误" : message);

@@ -211,10 +211,43 @@ ALL OK
 
 ---
 
+## BUG-5 换集消息实际未发出（主线程 TLS I/O）— 已修复（`5.5.11-syncplay`）
+
+**现象**：两端都在 5.5.10、同一房间、都显示已连接，但 A 换集 B 完全没反应（日志里连 `publish file=` 都没有）；点「离开」有时直接闪退。
+
+**设备日志（OPPO Pad，5.5.10）**
+
+```
+E/AndroidRuntime: FATAL EXCEPTION: main
+  android.os.NetworkOnMainThreadException
+    at com.android.org.conscrypt.ConscryptEngineSocket.close(...)
+    at SyncPlayClient.close(...)
+    at SyncPlayManager.leave(...)
+    at SyncPlayDialog.onClick(...)
+```
+
+**根因**
+
+- `SyncPlayClient.send()` / `close()` 直接在调用线程写 TLS socket；而 `Set.file`、`State`、`List` 大量由主线程触发（`startPlayback`、`onLocalPlayState`、对话框刷新）。
+- 该机型上 Glide 的调试分支启用了 `StrictMode.detectNetwork().penaltyDeath()`，主线程写 socket 会抛 `NetworkOnMainThreadException`：
+  - `sendFile()` / `sendState()` 里的 `catch (Exception ignored)` 把异常吞掉 → **换集消息静默丢失**，所以对端永远收不到 `Set.file`；
+  - `leave()`/`close()` 没有兜底 → 主线程关 TLS socket 时直接崩溃。
+
+**修复**
+
+- `SyncPlayClient` 增加专用写线程 `SyncPlayWriter`：所有 `Set` / `State` / `List` 消息一律入队，由后台单线程按序写出；`Hello` 仍由连接线程同步发送以保证握手顺序。
+- `close()` 也改为在写线程关闭 socket（TLS `close_notify` 同样会产生网络 I/O），不再在主线程关连接。
+- 写失败时通过 `onClosed` 上报，不再静默。
+- 增加 `connect` / `hello` / `closed` / `publish` / `file from` / `apply remote` / `switchTo` 日志（`adb logcat -s SyncPlay`）。
+
+**验证**：5.5.11 安装后 `adb logcat -s SyncPlay` 应能看到 `publish file=...`、对端 `file from ...`、`switchTo ...`，换集跟随恢复；「离开」不再崩溃。
+
+---
+
 ## 附：本轮发布信息
 
 - 分支：`syncplay-5.5.6`（`fongmi` 保持 5.8.9；旧状态在 `backup/5.8.9-syncplay`）
-- 本次版本：`5.5.10-syncplay`（versionCode `560`，tag `v5.5.10-syncplay`）
+- 本次版本：`5.5.11-syncplay`（versionCode `561`，tag `v5.5.11-syncplay`）
 - CI：`.github/workflows/release.yml`（先从 `FongMi/media` 的 `3c2cbe8ac7` 构建 20 个 media3 AAR，再打 4 个 APK 并发布）
   - 发布步骤加了 `target_commitish: ${{ github.sha }}`：之前手动触发时 tag 被建在默认分支，`v5.5.6`~`v5.5.9` 四个 tag 全部指向 `2a3115ee6`；现在保证 tag 指向实际构建的提交。
 - 签名：仓库 Secrets `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`（keystore 备份在维护者本机 `~/.tv-signing/`）
