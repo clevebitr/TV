@@ -191,7 +191,7 @@ public class SyncPlayClient {
     private static void closeQuietly(Socket socket) {
         try {
             socket.close();
-        } catch (IOException ignored) {
+        } catch (Throwable ignored) {
         }
     }
 
@@ -249,6 +249,7 @@ public class SyncPlayClient {
         pausedState = paused;
     }
 
+
     public void sendState(boolean doSeek, boolean stateChange) {
         if (closed) return;
         try {
@@ -305,7 +306,7 @@ public class SyncPlayClient {
 
     private void write(byte[] data) {
         OutputStream stream = output;
-        if (closed || stream == null) return;
+        if (stream == null) return;
         try {
             synchronized (writeLock) {
                 stream.write(data);
@@ -357,13 +358,18 @@ public class SyncPlayClient {
         if (!closed) {
             closed = true;
             final Socket current = socket;
+            Runnable task = () -> {
+                if (current != null) closeQuietly(current);
+            };
             try {
                 // TLS close writes a close_notify record, so it must run off the main thread too.
-                writer.execute(() -> {
-                    if (current != null) closeQuietly(current);
-                });
+                writer.execute(task);
             } catch (Exception e) {
-                if (current != null) closeQuietly(current);
+                // The writer was already shut down: close on a throw-away thread instead of the
+                // caller (which is usually the main thread).
+                Thread thread = new Thread(task, "SyncPlayClose");
+                thread.setDaemon(true);
+                thread.start();
             }
         }
         writer.shutdown();

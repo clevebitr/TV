@@ -244,10 +244,76 @@ E/AndroidRuntime: FATAL EXCEPTION: main
 
 ---
 
+## BUG-6 退出播放页不离开房间、误发换集/进度重置 — 已修复（`5.5.12-syncplay`）
+
+**现象**：用户/房主退出播放器页后仍留在房间；退出时对方进度被重置；空房间里的用户列表仍显示已退出的人；留在房间的人换集/暂停，已退出播放页的设备还会弹提示。
+
+**根因**
+
+- `SyncPlayManager` 是进程单例，`VideoActivity` 结束时没有调用 `leave()`，连接一直保持。
+- 播放服务 `shutdown()` 会 `stopAndClear()` 清空媒体项，触发 `PlayerManager.onMediaItemTransition` / `onPlayWhenReadyChanged`，而 `SyncPlayManager` 没有判断播放器是否还有媒体，直接发布了一个 `Set.file` + `doSeek` 的 `State`，把房间进度拉回 0。
+- 连接没断开，所以服务端仍认为该用户在房间里，后续事件也继续推给它。
+
+**修复**
+
+- 两端 `VideoActivity#onDestroy()` 在 `isFinishing()` 时调用 `leave()`。
+- `SyncPlayManager.Player` 新增 `hasMedia()`；所有本地发布/状态推送在 `!hasMedia()` 时直接返回，不再发送空播放器的文件/进度。
+- 播放器被清空后延迟 3 秒仍无媒体 → 自动 `leave()`（覆盖通知栏停止、系统回收等不经过 Activity 退出的路径）。
+- 离开时若本端正在缓冲，先发一个恢复状态再断开，避免房间卡在暂停。
+
+---
+
+## BUG-7 缓冲同步 — 已实现（`5.5.12-syncplay`）
+
+**目标**：线路/网络差的用户缓冲时，暂停整个房间，其他端提示“xxx 正在缓冲”；缓冲完成后自动继续。
+
+**协议限制**：Syncplay 服务端会重建 `State.playstate`，只保留 `position/paused/doSeek/setBy`，自定义字段会被丢弃。因此缓冲标记放在 `Set.file` 的第 6 段：
+
+```
+第1集sitevodIdindex剧名1   ← 开始缓冲
+第1集sitevodIdindex剧名2   ← 缓冲完成，恢复
+第1集sitevodIdindex剧名            ← 普通文件（清除缓冲态，不自动恢复）
+```
+
+**实现**
+
+- `PlayerManager.onPlaybackStateChanged` 通知 `SyncPlayManager.onLocalBuffering()`；缓冲 800ms 后才上报，避免瞬时抖动。
+- 缓冲开始：`Set.file(buffering=1)` + `State(paused=true)`；每 5 秒重发一次文件心跳（20 秒超时保护）。
+- 其他端收到 `buffering=1` → 暂停本地播放并提示；收到 `buffering=2` → 清除缓冲标记并恢复（即使 State 被 clientIgnore 丢弃也能恢复）；收到普通文件 → 只清除标记，不强行恢复。
+- 缓冲端在缓冲期间手动暂停，结束时不发恢复；其他端也保持暂停。
+- 用户离开/缓冲超时 → 自动恢复房间，不会永久卡住。
+- `SyncPlayDialog` 用户列表显示「缓冲中」，并通过 `Listener.onBufferingChanged` 实时刷新。
+
+---
+
+## BUG-8 全屏观看时随机退回搜索结果页 — 已修复（`5.5.12-syncplay`）
+
+**根因**
+
+1. `SyncPlayClient.close()` 在写线程已关闭的竞态下会回到调用线程（主线程）关闭 TLS socket，触发 `NetworkOnMainThreadException` → 崩溃 → 回退到搜索页。
+2. 观看中 Syncplay 跨源换集失败时，`VodPlaybackController.detailEmpty()` 可能调用 `finishVod()`，把播放器页关掉。
+
+**修复**
+
+- `close()` 的兜底关闭改为新建后台线程，绝不在主线程关 socket；`closeQuietly` 改为捕获 `Throwable`。
+- 跨源换集设置 15 秒保护位；失败时提示「无法切换…」并留在当前播放页，不再 `finish()`。
+
+---
+
+## UI 面板重做（`5.5.12-syncplay`）
+
+- 首次进入：两个大按钮（创建房间/加入房间）+ 同步服务器入口。
+- 服务器页：官方服务器 + 自定义服务器列表，每项显示延迟（全部并行测速）、STARTTLS 开关、保存/返回。
+- 创建房间：昵称 + 房间号（6-11 位数字，默认随机 8 位，可编辑/持久化），复制/重新生成，显示当前服务器。
+- 加入房间：昵称 + 房间号（默认空，数字键盘，粘贴按钮），显示当前服务器。
+- 已连接页保留房间号/延迟/用户列表/退出房间，用户列表实时显示「缓冲中」。
+
+---
+
 ## 附：本轮发布信息
 
 - 分支：`syncplay-5.5.6`（`fongmi` 保持 5.8.9；旧状态在 `backup/5.8.9-syncplay`）
-- 本次版本：`5.5.11-syncplay`（versionCode `561`，tag `v5.5.11-syncplay`）
+- 本次版本：`5.5.12-syncplay`（versionCode `562`，tag `v5.5.12-syncplay`）
 - CI：`.github/workflows/release.yml`（先从 `FongMi/media` 的 `3c2cbe8ac7` 构建 20 个 media3 AAR，再打 4 个 APK 并发布）
   - 发布步骤加了 `target_commitish: ${{ github.sha }}`：之前手动触发时 tag 被建在默认分支，`v5.5.6`~`v5.5.9` 四个 tag 全部指向 `2a3115ee6`；现在保证 tag 指向实际构建的提交。
 - 签名：仓库 Secrets `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`（keystore 备份在维护者本机 `~/.tv-signing/`）

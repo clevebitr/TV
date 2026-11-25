@@ -314,4 +314,35 @@
     <string name="sync_play_room_required">Enter a room name</string>
     <string name="sync_play_nickname_required">Enter a nickname</string>
 
+    <string name="sync_play_subtitle">Watch together with friends</string>
+    <string name="sync_play_create_room_button">Create room</string>
+    <string name="sync_play_join_room_button">Join room</string>
+    <string name="sync_play_server_title">Sync server</string>
+    <string name="sync_play_back">Back</string>
+    <string name="sync_play_regenerate">Regenerate</string>
+    <string name="sync_play_copy">Copy</string>
+    <string name="sync_play_paste">Paste</string>
+    <string name="sync_play_paste_empty">Clipboard is empty</string>
+    <string name="sync_play_copied">Copied</string>
+    <string name="sync_play_create_join">Create and join</string>
+    <string name="sync_play_join_submit">Join room</string>
+    <string name="sync_play_room_hint">6-11 digits</string>
+    <string name="sync_play_room_create_desc">Share this room number with friends</string>
+    <string name="sync_play_room_join_desc">Enter your friend&#39;s room number</string>
+    <string name="sync_play_nickname_desc">Visible to other users in the room</string>
+    <string name="sync_play_create_room_title">Create room</string>
+    <string name="sync_play_join_room_title">Join room</string>
+    <string name="sync_play_server_desc">Everyone in the room must use the same server</string>
+    <string name="sync_play_custom_server">Custom server</string>
+    <string name="sync_play_server_address">Server address</string>
+    <string name="sync_play_test_all">Test all</string>
+    <string name="sync_play_confirm">Save</string>
+    <string name="sync_play_room_invalid">Room number must be 6-11 digits</string>
+    <string name="sync_play_room_empty">Enter the room number</string>
+    <string name="sync_play_buffering">%1$s is buffering…</string>
+    <string name="sync_play_buffering_self">Network is slow; buffering. The room is paused.</string>
+    <string name="sync_play_buffering_done">%1$s finished buffering</string>
+    <string name="sync_play_buffering_timeout">%1$s is still buffering, resuming playback</string>
+    <string name="sync_play_buffering_wait">Waiting for %1$s to finish buffering</string>
+    <string name="sync_play_buffering_tag">Buffering</string>
 </resources>

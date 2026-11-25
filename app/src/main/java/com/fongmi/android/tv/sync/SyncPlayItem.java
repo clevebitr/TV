@@ -14,6 +14,10 @@ import java.util.Objects;
  */
 public final class SyncPlayItem {
 
+    public static final int BUFFERING_NONE = 0;
+    public static final int BUFFERING_START = 1;
+    public static final int BUFFERING_DONE = 2;
+
     private static final char SEPARATOR = '\u0001';
     private static final int MAX_LENGTH = 240;
 
@@ -22,6 +26,7 @@ public final class SyncPlayItem {
     private final String vodId;
     private final String vodName;
     private final int index;
+    private final int buffering;
 
     public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId) {
         this(episode, site, vodId, -1);
@@ -32,11 +37,24 @@ public final class SyncPlayItem {
     }
 
     public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId, int index, @Nullable String vodName) {
+        this(episode, site, vodId, index, vodName, BUFFERING_NONE);
+    }
+
+    public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId, int index, @Nullable String vodName, int buffering) {
         this.episode = normalize(episode);
         this.site = normalize(site);
         this.vodId = normalize(vodId);
         this.index = index;
         this.vodName = normalize(vodName);
+        this.buffering = buffering;
+    }
+
+    public SyncPlayItem withBuffering(boolean buffering) {
+        return new SyncPlayItem(episode, site, vodId, index, vodName, buffering ? BUFFERING_START : BUFFERING_NONE);
+    }
+
+    public SyncPlayItem withBufferingDone() {
+        return new SyncPlayItem(episode, site, vodId, index, vodName, BUFFERING_DONE);
     }
 
     public static SyncPlayItem local(@Nullable String episode) {
@@ -49,7 +67,8 @@ public final class SyncPlayItem {
         if (parts.length < 3) return new SyncPlayItem(value, "", "");
         int index = parts.length > 3 ? parseInt(parts[3]) : -1;
         String vodName = parts.length > 4 ? parts[4] : "";
-        return new SyncPlayItem(parts[0], parts[1], parts[2], index, vodName);
+        int buffering = parts.length > 5 ? parseInt(parts[5]) : BUFFERING_NONE;
+        return new SyncPlayItem(parts[0], parts[1], parts[2], index, vodName, buffering);
     }
 
     private static int parseInt(String value) {
@@ -100,6 +119,14 @@ public final class SyncPlayItem {
         return !vodName.isEmpty();
     }
 
+    public boolean isBuffering() {
+        return buffering == BUFFERING_START;
+    }
+
+    public boolean isBufferingDone() {
+        return buffering == BUFFERING_DONE;
+    }
+
     public boolean hasEpisode() {
         return !episode.isEmpty();
     }
@@ -123,6 +150,9 @@ public final class SyncPlayItem {
         if (!hasSource()) return episode;
         String source = episode + SEPARATOR + site + SEPARATOR + vodId + SEPARATOR + index;
         String full = source + SEPARATOR + vodName;
+        // A buffering flag is only useful together with the source payload; otherwise older
+        // receivers would misread it as the drama name.
+        if (buffering != BUFFERING_NONE && full.length() + 2 <= MAX_LENGTH) return full + SEPARATOR + buffering;
         if (full.length() <= MAX_LENGTH) return full;
         return source.length() <= MAX_LENGTH ? source : episode;
     }

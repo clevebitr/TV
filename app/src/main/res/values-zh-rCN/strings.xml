@@ -303,4 +303,35 @@
     <string name="sync_play_room_required">请输入房间名称</string>
     <string name="sync_play_nickname_required">请输入昵称</string>
 
+    <string name="sync_play_subtitle">和朋友一起同步看剧</string>
+    <string name="sync_play_create_room_button">创建房间</string>
+    <string name="sync_play_join_room_button">加入房间</string>
+    <string name="sync_play_server_title">同步服务器</string>
+    <string name="sync_play_back">返回</string>
+    <string name="sync_play_regenerate">重新生成</string>
+    <string name="sync_play_copy">复制</string>
+    <string name="sync_play_paste">粘贴</string>
+    <string name="sync_play_paste_empty">剪贴板为空</string>
+    <string name="sync_play_copied">已复制</string>
+    <string name="sync_play_create_join">创建并加入</string>
+    <string name="sync_play_join_submit">加入房间</string>
+    <string name="sync_play_room_hint">6-11 位数字</string>
+    <string name="sync_play_room_create_desc">把房间号分享给好友</string>
+    <string name="sync_play_room_join_desc">输入好友的房间号</string>
+    <string name="sync_play_nickname_desc">房间内的其他用户可见</string>
+    <string name="sync_play_create_room_title">创建房间</string>
+    <string name="sync_play_join_room_title">加入房间</string>
+    <string name="sync_play_server_desc">房间成员需使用同一台服务器</string>
+    <string name="sync_play_custom_server">自定义服务器</string>
+    <string name="sync_play_server_address">服务器地址</string>
+    <string name="sync_play_test_all">全部测速</string>
+    <string name="sync_play_confirm">保存</string>
+    <string name="sync_play_room_invalid">房间号为 6-11 位数字</string>
+    <string name="sync_play_room_empty">请输入房间号</string>
+    <string name="sync_play_buffering">%1$s 正在缓冲…</string>
+    <string name="sync_play_buffering_self">网络较慢，正在缓冲，已暂停房间</string>
+    <string name="sync_play_buffering_done">%1$s 缓冲完成</string>
+    <string name="sync_play_buffering_timeout">%1$s 缓冲超时，继续播放</string>
+    <string name="sync_play_buffering_wait">正在等待 %1$s 缓冲完成</string>
+    <string name="sync_play_buffering_tag">缓冲中</string>
 </resources>

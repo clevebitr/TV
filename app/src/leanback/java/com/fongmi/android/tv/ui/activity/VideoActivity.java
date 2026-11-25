@@ -113,6 +113,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
     private String pendingSite;
     private int pendingIndex = -1;
     private Episode syncEpisode;
+    private boolean syncSwitching;
+    private long syncSwitchAt;
+    private String syncSwitchName;
 
     private final SyncPlayManager.EpisodeHandler syncEpisodeHandler = new SyncPlayManager.EpisodeHandler() {
 
@@ -153,6 +156,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             pendingEpisode = item.getEpisode();
             pendingIndex = item.getIndex();
             pendingSite = item.getSite();
+            syncSwitching = true;
+            syncSwitchAt = SystemClock.elapsedRealtime();
+            syncSwitchName = item.getEpisode();
             Vod vod = new Vod();
             vod.setSite(target);
             vod.setId(item.getVodId());
@@ -604,6 +610,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void renderEpisodes(List<Episode> items) {
+        syncSwitching = false;
         setEpisodeAdapter(items);
         selectPendingEpisode(items);
         // The remote episode may have arrived while this list was still loading.
@@ -738,6 +745,12 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void finishVod() {
+        // A failed remote crawler source must not kick the user out of the player.
+        if (syncSwitching && SystemClock.elapsedRealtime() - syncSwitchAt < 15000) {
+            syncSwitching = false;
+            Notify.show(ResUtil.getString(R.string.sync_play_switch_fail, syncSwitchName == null ? "" : syncSwitchName));
+            return;
+        }
         finish();
     }
 
@@ -1513,6 +1526,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     protected void onDestroy() {
+        if (isFinishing()) SyncPlayManager.get().leave();
         mClock.release();
         saveHistory(true);
         DanmakuApi.cancel();

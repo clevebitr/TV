@@ -174,6 +174,11 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
         return spec == null || TextUtils.isEmpty(spec.getUrl());
     }
 
+    @Override
+    public boolean hasMedia() {
+        return player != null && !player.isEmpty();
+    }
+
     public boolean isPortrait() {
         return getVideoHeight() > getVideoWidth();
     }
@@ -550,6 +555,7 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
         @Override
         public void onPlaybackStateChanged(int state) {
             if (state == Player.STATE_READY || state == Player.STATE_ENDED) App.removeCallbacks(runnable);
+            SyncPlayManager.get().onLocalBuffering(state == Player.STATE_BUFFERING);
         }
 
         @Override

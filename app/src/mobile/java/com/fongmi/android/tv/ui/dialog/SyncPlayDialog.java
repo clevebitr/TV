@@ -1,10 +1,12 @@
 package com.fongmi.android.tv.ui.dialog;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -14,6 +16,7 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.databinding.AdapterSyncPlayServerBinding;
 import com.fongmi.android.tv.databinding.AdapterSyncPlayUserBinding;
 import com.fongmi.android.tv.databinding.DialogSyncPlayBinding;
 import com.fongmi.android.tv.setting.SyncPlaySetting;
@@ -24,13 +27,32 @@ import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayManager.Listener {
 
+    private static final String CUSTOM = "__custom__";
+    private static final String ROOM_REGEX = "^[0-9]{6,11}$";
+
+    private enum Page {HOME, CREATE, JOIN, SERVER}
+
+    private final Map<String, Integer> latencies = new LinkedHashMap<>();
+    private final Set<String> testing = ConcurrentHashMap.newKeySet();
+    private final Random random = new Random();
+
     private DialogSyncPlayBinding binding;
-    private int testToken;
+    private Page page = Page.HOME;
+    private Page serverReturn = Page.HOME;
+    private String endpoint = "";
+    private String customAddress = "";
+    private boolean customSelected;
+    private boolean customTls = true;
+    private int latencyToken;
 
     public static SyncPlayDialog create() {
         return new SyncPlayDialog();
@@ -49,33 +71,68 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
     @Override
     protected void initView() {
         SyncPlayManager manager = SyncPlayManager.get();
-        binding.server.setAdapter(new ArrayAdapter<>(requireContext(), android.R.layout.simple_list_item_1, getServers()));
-        binding.server.setText(SyncPlaySetting.getEndpoint(), false);
-        binding.tls.setChecked(SyncPlaySetting.isTls());
+        endpoint = SyncPlaySetting.getEndpoint();
+        customTls = SyncPlaySetting.isTls();
+        customSelected = !SyncPlayEndpoint.isOfficial(endpoint);
+        customAddress = customSelected && SyncPlayEndpoint.parse(endpoint) != null ? endpoint : "";
         binding.nickname.setText(SyncPlaySetting.getNickname());
-        binding.room.setText(manager.isConnected() ? manager.getRoom() : SyncPlaySetting.getRoom());
+        binding.createRoom.setText(defaultCreateRoom());
+        binding.joinRoom.setText("");
+        binding.customServer.setText(customAddress);
         manager.addListener(this);
         render();
         if (manager.isConnected()) manager.requestUsers();
-        test();
     }
 
     @Override
     protected void initEvent() {
-        binding.test.setOnClickListener(view -> test());
-        binding.refresh.setOnClickListener(view -> SyncPlayManager.get().requestUsers());
-        binding.join.setOnClickListener(view -> connect(false));
-        binding.create.setOnClickListener(view -> connect(true));
-        binding.leave.setOnClickListener(view -> SyncPlayManager.get().leave());
-        binding.server.setOnClickListener(view -> binding.server.showDropDown());
-        binding.server.setOnItemClickListener((parent, view, position, id) -> {
-            String endpoint = (String) parent.getItemAtPosition(position);
-            binding.server.setText(endpoint, false);
-            binding.tls.setChecked(SyncPlayEndpoint.isOfficial(endpoint));
-            savePreferences();
-            test();
+        binding.back.setOnClickListener(view -> {
+            page = page == Page.SERVER ? serverReturn : Page.HOME;
+            render();
         });
-        binding.tls.setOnCheckedChangeListener((button, checked) -> savePreferences());
+        binding.create.setOnClickListener(view -> {
+            page = Page.CREATE;
+            render();
+        });
+        binding.join.setOnClickListener(view -> {
+            page = Page.JOIN;
+            binding.joinRoom.setText("");
+            render();
+        });
+        binding.serverRow.setOnClickListener(view -> openServer());
+        binding.serverInfoCreate.setOnClickListener(view -> openServer());
+        binding.serverInfoJoin.setOnClickListener(view -> openServer());
+        binding.copy.setOnClickListener(view -> copyRoom());
+        binding.paste.setOnClickListener(view -> pasteRoom());
+        binding.regenerate.setOnClickListener(view -> binding.createRoom.setText(randomRoom()));
+        binding.submitCreate.setOnClickListener(view -> createRoom());
+        binding.submitJoin.setOnClickListener(view -> joinRoom());
+        binding.testAll.setOnClickListener(view -> testServers());
+        binding.saveServer.setOnClickListener(view -> saveServer());
+        binding.leave.setOnClickListener(view -> SyncPlayManager.get().leave());
+        binding.refresh.setOnClickListener(view -> SyncPlayManager.get().requestUsers());
+        binding.tls.setOnCheckedChangeListener((button, checked) -> {
+            if (binding == null || !customSelected) return;
+            customTls = checked;
+        });
+        binding.customServer.setOnFocusChangeListener((view, focused) -> {
+            if (!focused && binding != null) updateCustomAddress();
+        });
+        binding.serverList.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+    }
+
+    private void openServer() {
+        if (SyncPlayManager.get().isConnected() || SyncPlayManager.get().isConnecting()) return;
+        serverReturn = page == Page.SERVER ? Page.HOME : page;
+        page = Page.SERVER;
+        render();
+        testServers();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        render();
     }
 
     @Override
@@ -85,30 +142,120 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         super.onDestroyView();
     }
 
-    private List<String> getServers() {
-        List<String> servers = new ArrayList<>(SyncPlayEndpoint.OFFICIAL);
-        String saved = SyncPlaySetting.getEndpoint();
-        if (!servers.contains(saved)) servers.add(saved);
-        return servers;
+    private String defaultCreateRoom() {
+        String saved = SyncPlaySetting.getRoom();
+        return isRoom(saved) ? saved : randomRoom();
+    }
+
+    private String randomRoom() {
+        return String.valueOf(10000000 + random.nextInt(90000000));
+    }
+
+    private boolean isRoom(String value) {
+        return value != null && value.matches(ROOM_REGEX);
+    }
+
+    private String text(android.widget.TextView view) {
+        return view.getText() == null ? "" : view.getText().toString().trim();
+    }
+
+    private void createRoom() {
+        String nickname = text(binding.nickname);
+        if (nickname.isEmpty()) {
+            Notify.show(R.string.sync_play_nickname_required);
+            return;
+        }
+        String room = text(binding.createRoom);
+        if (!isRoom(room)) {
+            Notify.show(R.string.sync_play_room_invalid);
+            return;
+        }
+        SyncPlaySetting.putNickname(nickname);
+        SyncPlaySetting.putRoom(room);
+        connect(room, nickname);
+    }
+
+    private void joinRoom() {
+        String nickname = text(binding.nickname);
+        if (nickname.isEmpty()) {
+            Notify.show(R.string.sync_play_nickname_required);
+            return;
+        }
+        String room = text(binding.joinRoom);
+        if (room.isEmpty()) {
+            Notify.show(R.string.sync_play_room_empty);
+            return;
+        }
+        if (!isRoom(room)) {
+            Notify.show(R.string.sync_play_room_invalid);
+            return;
+        }
+        SyncPlaySetting.putNickname(nickname);
+        connect(room, nickname);
+    }
+
+    private void connect(String room, String nickname) {
+        boolean useTls = SyncPlayEndpoint.isOfficial(endpoint) || tlsValue();
+        SyncPlayEndpoint target = SyncPlayEndpoint.parse(endpoint);
+        if (target == null) {
+            Notify.show(R.string.sync_play_invalid_endpoint);
+            page = Page.SERVER;
+            render();
+            return;
+        }
+        SyncPlaySetting.putEndpoint(endpoint);
+        SyncPlaySetting.putTls(useTls);
+        page = Page.HOME;
+        SyncPlayManager.get().connect(target, useTls, room, nickname);
+        render();
+    }
+
+    private boolean tlsValue() {
+        if (!customSelected) return true;
+        updateCustomAddress();
+        return customTls;
+    }
+
+    private void updateCustomAddress() {
+        if (binding == null || !customSelected) return;
+        customAddress = text(binding.customServer);
+        endpoint = customAddress;
+    }
+
+    private void copyRoom() {
+        String room = text(binding.createRoom);
+        if (room.isEmpty()) return;
+        ClipboardManager manager = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        if (manager != null) manager.setPrimaryClip(ClipData.newPlainText("room", room));
+        Notify.show(R.string.sync_play_copied);
+    }
+
+    private void pasteRoom() {
+        ClipboardManager manager = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        CharSequence value = manager == null || manager.getPrimaryClip() == null || manager.getPrimaryClip().getItemCount() == 0 ? "" : manager.getPrimaryClip().getItemAt(0).coerceToText(requireContext());
+        String room = value == null ? "" : value.toString().replaceAll("[^0-9]", "");
+        if (room.length() > 11) room = room.substring(0, 11);
+        if (room.isEmpty()) {
+            Notify.show(R.string.sync_play_paste_empty);
+            return;
+        }
+        binding.joinRoom.setText(room);
+        binding.joinRoom.setSelection(room.length());
     }
 
     private void savePreferences() {
         if (binding == null) return;
-        String server = binding.server.getText().toString().trim();
-        if (SyncPlayEndpoint.parse(server) != null) {
-            SyncPlaySetting.putEndpoint(server);
-            SyncPlaySetting.putTls(SyncPlayEndpoint.isOfficial(server) || binding.tls.isChecked());
-        }
-        String nickname = binding.nickname.getText().toString().trim();
+        String nickname = text(binding.nickname);
         if (!nickname.isEmpty()) SyncPlaySetting.putNickname(nickname);
-        String room = binding.room.getText().toString().trim();
-        if (!room.isEmpty()) SyncPlaySetting.putRoom(room);
+        if (SyncPlayEndpoint.parse(endpoint) != null) {
+            SyncPlaySetting.putEndpoint(endpoint);
+            SyncPlaySetting.putTls(SyncPlayEndpoint.isOfficial(endpoint) || customTls);
+        }
     }
 
     @Override
     public void onSessionChanged() {
         if (getView() == null) return;
-        if (SyncPlayManager.get().isConnected()) testToken++;
         render();
     }
 
@@ -130,27 +277,67 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         render();
     }
 
+    @Override
+    public void onBufferingChanged() {
+        if (getView() == null) return;
+        render();
+    }
+
     private void render() {
+        if (binding == null) return;
         SyncPlayManager manager = SyncPlayManager.get();
         boolean active = manager.isConnected() || manager.isConnecting();
-        binding.config.setVisibility(active ? View.GONE : View.VISIBLE);
-        binding.roomGroup.setVisibility(active ? View.VISIBLE : View.GONE);
-        binding.test.setVisibility(active ? View.GONE : View.VISIBLE);
-        binding.latency.setVisibility(active ? View.GONE : View.VISIBLE);
+        boolean home = !active && page == Page.HOME;
+        boolean create = !active && page == Page.CREATE;
+        boolean join = !active && page == Page.JOIN;
+        boolean server = !active && page == Page.SERVER;
+        boolean room = active;
+        binding.back.setVisibility(!active && page != Page.HOME ? View.VISIBLE : View.GONE);
+        binding.homeGroup.setVisibility(home ? View.VISIBLE : View.GONE);
+        binding.createGroup.setVisibility(create ? View.VISIBLE : View.GONE);
+        binding.joinGroup.setVisibility(join ? View.VISIBLE : View.GONE);
+        binding.serverGroup.setVisibility(server ? View.VISIBLE : View.GONE);
+        binding.nicknameGroup.setVisibility(create || join ? View.VISIBLE : View.GONE);
+        binding.roomGroup.setVisibility(room ? View.VISIBLE : View.GONE);
         binding.refresh.setVisibility(manager.isConnected() ? View.VISIBLE : View.GONE);
-        String status = manager.getStatus();
+        binding.latency.setVisibility(room ? View.VISIBLE : View.GONE);
+        binding.title.setText(title());
+        binding.serverValue.setText(endpoint);
+        binding.serverInfoCreate.setText(ResUtil.getString(R.string.sync_play_server_info, endpoint));
+        binding.serverInfoJoin.setText(ResUtil.getString(R.string.sync_play_server_info, endpoint));
+        renderStatus(manager.getStatus());
+        if (room) renderRoom(manager);
+        if (server) renderServers();
+    }
+
+    private String title() {
+        return switch (page) {
+            case CREATE -> ResUtil.getString(R.string.sync_play_create_room_title);
+            case JOIN -> ResUtil.getString(R.string.sync_play_join_room_title);
+            case SERVER -> ResUtil.getString(R.string.sync_play_server_title);
+            default -> ResUtil.getString(R.string.sync_play_title);
+        };
+    }
+
+    private void renderStatus(String status) {
         binding.status.setText(status);
         binding.status.setVisibility(TextUtils.isEmpty(status) ? View.GONE : View.VISIBLE);
-        if (!active) return;
+    }
+
+    private void renderRoom(SyncPlayManager manager) {
         String room = manager.getRoom();
         String latency = getLatencyText(manager.getRtt());
-        binding.info.setText(ResUtil.getString(R.string.sync_play_connected, room) + " · " + latency);
+        String info = ResUtil.getString(R.string.sync_play_connected, room) + " · " + latency;
+        if (manager.isLocalBuffering()) info += " · " + ResUtil.getString(R.string.sync_play_buffering_tag);
+        binding.info.setText(info);
         binding.info.setVisibility(TextUtils.isEmpty(room) ? View.GONE : View.VISIBLE);
+        binding.latency.setText(latency);
         renderUsers(manager.getUsers(), manager.getUsername());
         binding.leave.setEnabled(true);
     }
 
     private void renderUsers(List<SyncPlayUser> users, String self) {
+        SyncPlayManager manager = SyncPlayManager.get();
         binding.users.removeAllViews();
         for (int i = 0; i < users.size(); i++) {
             SyncPlayUser user = users.get(i);
@@ -159,6 +346,7 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
             item.name.setText(user.getName());
             item.tag.setVisibility(me ? View.VISIBLE : View.GONE);
             String info = getInfo(user);
+            if (manager.isBuffering(user.getName())) info = info + " · " + ResUtil.getString(R.string.sync_play_buffering_tag);
             item.info.setText(info);
             item.info.setVisibility(TextUtils.isEmpty(info) ? View.GONE : View.VISIBLE);
             LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(LinearLayoutCompat.LayoutParams.MATCH_PARENT, LinearLayoutCompat.LayoutParams.WRAP_CONTENT);
@@ -180,52 +368,97 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         return rtt < 0 ? "—" : ResUtil.getString(R.string.sync_play_latency_value, rtt);
     }
 
-    private void test() {
-        String value = binding.server.getText().toString().trim();
-        SyncPlayEndpoint endpoint = SyncPlayEndpoint.parse(value);
-        if (endpoint == null) {
-            binding.latency.setText(R.string.sync_play_latency_fail);
-            return;
-        }
-        boolean tls = SyncPlayEndpoint.isOfficial(value) || binding.tls.isChecked();
-        int token = ++testToken;
-        binding.latency.setText("…");
-        SyncPlayManager.get().testLatency(value, tls, rtt -> {
-            if (token != testToken || getView() == null) return;
-            binding.latency.setText(rtt < 0 ? ResUtil.getString(R.string.sync_play_latency_fail) : ResUtil.getString(R.string.sync_play_latency_value, rtt));
-        });
+    private void renderServers() {
+        if (binding == null) return;
+        binding.serverList.removeAllViews();
+        for (String value : SyncPlayEndpoint.OFFICIAL) addServerRow(value, false);
+        addServerRow(CUSTOM, true);
+        binding.customServer.setVisibility(customSelected ? View.VISIBLE : View.GONE);
+        binding.tls.setEnabled(customSelected);
+        binding.tls.setChecked(customSelected ? customTls : true);
     }
 
-    private void connect(boolean create) {
-        String value = binding.server.getText().toString().trim();
-        SyncPlayEndpoint endpoint = SyncPlayEndpoint.parse(value);
-        if (endpoint == null) {
-            Notify.show(R.string.sync_play_invalid_endpoint);
-            return;
+    private void addServerRow(String value, boolean custom) {
+        String address = custom ? (customAddress.isEmpty() ? ResUtil.getString(R.string.sync_play_custom_server) : customAddress) : value;
+        AdapterSyncPlayServerBinding row = AdapterSyncPlayServerBinding.inflate(getLayoutInflater(), binding.serverList, false);
+        boolean selected = custom ? customSelected : !customSelected && value.equals(endpoint);
+        row.address.setText(address);
+        row.check.setVisibility(selected ? View.VISIBLE : View.GONE);
+        String key = custom ? customAddress : value;
+        if (custom && customAddress.isEmpty()) row.latency.setVisibility(View.GONE);
+        else if (testing.contains(key)) {
+            row.latency.setText("…");
+            row.latency.setVisibility(View.VISIBLE);
+        } else if (latencies.containsKey(key)) {
+            Integer rtt = latencies.get(key);
+            row.latency.setText(rtt == null ? ResUtil.getString(R.string.sync_play_latency_fail) : ResUtil.getString(R.string.sync_play_latency_value, rtt));
+            row.latency.setVisibility(View.VISIBLE);
+        } else {
+            row.latency.setText("—");
+            row.latency.setVisibility(View.VISIBLE);
         }
-        String nickname = binding.nickname.getText().toString().trim();
-        if (nickname.isEmpty()) {
-            Notify.show(R.string.sync_play_nickname_required);
-            return;
+        row.getRoot().setOnClickListener(view -> selectServer(value, custom));
+        LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(LinearLayoutCompat.LayoutParams.MATCH_PARENT, LinearLayoutCompat.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = ResUtil.dp2px(8);
+        binding.serverList.addView(row.getRoot(), params);
+    }
+
+    private void selectServer(String value, boolean custom) {
+        if (custom) {
+            customSelected = true;
+            binding.customServer.setVisibility(View.VISIBLE);
+            binding.customServer.setText(customAddress);
+            binding.customServer.requestFocus();
+            endpoint = customAddress;
+            binding.tls.setEnabled(true);
+            binding.tls.setChecked(customTls);
+        } else {
+            customSelected = false;
+            binding.customServer.setVisibility(View.GONE);
+            endpoint = value;
+            binding.tls.setEnabled(false);
+            binding.tls.setChecked(true);
         }
-        String room = binding.room.getText().toString().trim();
-        if (room.isEmpty()) {
-            if (!create) {
-                Notify.show(R.string.sync_play_room_required);
+        render();
+    }
+
+    private void testServers() {
+        int token = ++latencyToken;
+        latencies.clear();
+        testing.clear();
+        List<String> targets = new ArrayList<>(SyncPlayEndpoint.OFFICIAL);
+        if (SyncPlayEndpoint.parse(customAddress) != null) targets.add(customAddress);
+        testing.addAll(targets);
+        renderServers();
+        for (String value : targets) {
+            boolean useTls = SyncPlayEndpoint.isOfficial(value) || customTls;
+            SyncPlayManager.get().testLatency(value, useTls, rtt -> {
+                if (getView() == null || token != latencyToken || page != Page.SERVER) return;
+                testing.remove(value);
+                latencies.put(value, rtt);
+                renderServers();
+            });
+        }
+    }
+
+    private void saveServer() {
+        if (customSelected) {
+            updateCustomAddress();
+            if (SyncPlayEndpoint.parse(customAddress) == null) {
+                Notify.show(R.string.sync_play_invalid_endpoint);
                 return;
             }
-            room = randomRoom();
+            endpoint = customAddress;
+        } else {
+            if (SyncPlayEndpoint.parse(endpoint) == null) {
+                Notify.show(R.string.sync_play_invalid_endpoint);
+                return;
+            }
         }
-        boolean tls = SyncPlayEndpoint.isOfficial(value) || binding.tls.isChecked();
-        SyncPlaySetting.putEndpoint(value);
-        SyncPlaySetting.putNickname(nickname);
-        SyncPlaySetting.putTls(tls);
-        SyncPlaySetting.putRoom(room);
-        binding.room.setText(room);
-        SyncPlayManager.get().connect(endpoint, tls, room, nickname);
-    }
-
-    private String randomRoom() {
-        return "TV-" + (10000 + new Random().nextInt(90000));
+        boolean useTls = SyncPlayEndpoint.isOfficial(endpoint) || customTls;
+        SyncPlaySetting.putEndpoint(endpoint);
+        SyncPlaySetting.putTls(useTls);
+        page = serverReturn;
+        render();
     }
 }

@@ -16,6 +16,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,6 +40,8 @@ public final class SyncPlayManager {
         boolean isPlayWhenReady();
 
         boolean isBuffering();
+
+        boolean hasMedia();
 
         void play();
 
@@ -69,11 +74,16 @@ public final class SyncPlayManager {
 
         default void onStatusChanged(String status) {
         }
+
+        default void onBufferingChanged() {
+        }
     }
 
     private static final long SEEK_DRIFT = 1500;
     private static final long REMOTE_WINDOW = 1500;
     private static final long JOIN_GRACE = 1500;
+    private static final long BUFFERING_DELAY = 800;
+    private static final long BUFFERING_TIMEOUT = 20000;
 
     private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "SyncPlay");
@@ -111,6 +121,17 @@ public final class SyncPlayManager {
     private volatile long remoteUntil;
     private volatile long localUntil;
     private volatile long lastSeekAt;
+    private volatile long joinedAt;
+    private final Set<String> remoteBuffering = ConcurrentHashMap.newKeySet();
+    private final Map<String, Runnable> bufferingTimeouts = new ConcurrentHashMap<>();
+    private volatile boolean localBuffering;
+    private volatile boolean localBufferingWasPlaying;
+    private volatile boolean bufferingPaused;
+    private volatile long bufferingToken;
+    private volatile Runnable bufferingHeartbeat;
+    private volatile String bufferingClearedBy = "";
+    private volatile long bufferingClearedAt;
+    private volatile boolean emptyLeaveScheduled;
 
     private SyncPlayManager() {
     }
@@ -240,6 +261,8 @@ public final class SyncPlayManager {
 
     public void leave() {
         if (client == null && !connecting) return;
+        // Do not leave the room paused for buffering: release everyone first.
+        if (localBuffering) resumeRoom();
         close();
         updateStatus(ResUtil.getString(R.string.sync_play_left));
         dispatchSession();
@@ -256,12 +279,26 @@ public final class SyncPlayManager {
         room = "";
         username = "";
         endpoint = "";
+        joinedAt = 0;
         localItem = null;
         pendingRemote = null;
         pendingRemoteBy = "";
         authority = null;
+        clearBuffering();
         dispatchUsers();
         dispatchRtt();
+    }
+
+    private void clearBuffering() {
+        stopBufferingHeartbeat();
+        for (Runnable runnable : bufferingTimeouts.values()) App.removeCallbacks(runnable);
+        bufferingTimeouts.clear();
+        boolean changed = !remoteBuffering.isEmpty() || localBuffering;
+        remoteBuffering.clear();
+        localBuffering = false;
+        localBufferingWasPlaying = false;
+        bufferingPaused = false;
+        if (changed) dispatchBuffering();
     }
 
     public void requestUsers() {
@@ -269,11 +306,32 @@ public final class SyncPlayManager {
         if (current != null) current.requestList();
     }
 
+    public boolean isLocalBuffering() {
+        return localBuffering;
+    }
+
+    public boolean isBuffering(String name) {
+        return name != null && remoteBuffering.contains(name);
+    }
+
     public void onLocalPlayState(boolean playWhenReady) {
         localPlaying = playWhenReady;
         SyncPlayClient current = client;
         Player target = player;
-        if (current == null || target == null) return;
+        if (current == null || target == null || !target.hasMedia()) return;
+        // While somebody in the room is buffering the room stays paused, even if this user tries
+        // to press play: otherwise the buffering user immediately falls behind.
+        if (playWhenReady && localBuffering) {
+            // We are still buffering: keep the room paused until the stream is ready.
+            current.setLocalState(Math.max(0, target.getPosition() / 1000.0), true);
+            current.sendState(false, true);
+            return;
+        }
+        if (playWhenReady && !remoteBuffering.isEmpty()) {
+            target.pause();
+            toast(ResUtil.getString(R.string.sync_play_buffering_wait, remoteBuffering.iterator().next()));
+            return;
+        }
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
         if (isRemote(playWhenReady)) return;
         current.setLocalState(target.getPosition() / 1000.0, !playWhenReady);
@@ -283,12 +341,147 @@ public final class SyncPlayManager {
     public void onLocalSeek() {
         SyncPlayClient current = client;
         Player target = player;
-        if (current == null || target == null) return;
+        if (current == null || target == null || !target.hasMedia()) return;
         if (SystemClock.elapsedRealtime() < remoteUntil) return;
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
         localPlaying = target.isPlayWhenReady();
         current.setLocalState(target.getPosition() / 1000.0, !localPlaying);
         current.sendState(true, true);
+    }
+
+    /**
+     * Called from the player state listener. A slow user reports a buffering pause once it has been
+     * buffering for a short moment; when the stream is ready again the room is resumed.
+     */
+    public void onLocalBuffering(boolean buffering) {
+        SyncPlayClient current = client;
+        Player target = player;
+        if (current == null || target == null || !target.hasMedia()) {
+            if (localBuffering) {
+                localBuffering = false;
+                localBufferingWasPlaying = false;
+                stopBufferingHeartbeat();
+                dispatchBuffering();
+            }
+            scheduleLeaveWhenEmpty();
+            return;
+        }
+        if (buffering) {
+            if (localBuffering || !target.isPlayWhenReady()) return;
+            if (joinedAt == 0 || SystemClock.elapsedRealtime() - joinedAt < JOIN_GRACE) return;
+            long token = ++bufferingToken;
+            App.post(() -> confirmBuffering(token), BUFFERING_DELAY);
+            return;
+        }
+        if (!localBuffering) return;
+        boolean resume = localBufferingWasPlaying && target.isPlayWhenReady();
+        localBuffering = false;
+        localBufferingWasPlaying = false;
+        stopBufferingHeartbeat();
+        dispatchBuffering();
+        if (resume) {
+            log("buffering done, resume room");
+            publishBuffering(true, true);
+            localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+            localPlaying = true;
+            current.setLocalState(Math.max(0, target.getPosition() / 1000.0), false);
+            current.sendState(true, true);
+        } else {
+            // The user paused during the buffering; make sure the room stays paused.
+            log("buffering done while paused");
+            publishBuffering(false);
+            localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+            localPlaying = false;
+            current.setLocalState(Math.max(0, target.getPosition() / 1000.0), true);
+            current.sendState(false, true);
+        }
+    }
+
+    private void scheduleLeaveWhenEmpty() {
+        SyncPlayClient sessionClient = client;
+        if (emptyLeaveScheduled || sessionClient == null) return;
+        emptyLeaveScheduled = true;
+        App.post(() -> {
+            emptyLeaveScheduled = false;
+            Player target = player;
+            if (client != sessionClient || target == null || target.hasMedia()) return;
+            log("player stopped, leaving room");
+            leave();
+        }, 3000);
+    }
+
+    private void confirmBuffering(long token) {
+        if (token != bufferingToken || localBuffering) return;
+        SyncPlayClient current = client;
+        Player target = player;
+        if (current == null || target == null || !target.hasMedia() || !target.isBuffering()) return;
+        if (!target.isPlayWhenReady()) return;
+        localBuffering = true;
+        localBufferingWasPlaying = true;
+        log("local buffering after %dms, pausing room", BUFFERING_DELAY);
+        publishBuffering(true, false);
+        startBufferingHeartbeat();
+        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), true);
+        current.sendState(false, true);
+        localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+        localPlaying = false;
+        dispatchBuffering();
+        toast(ResUtil.getString(R.string.sync_play_buffering_self));
+    }
+
+    /** Sends an unpause state for the buffering client before it leaves the room. */
+    private void resumeRoom() {
+        SyncPlayClient current = client;
+        Player target = player;
+        localBuffering = false;
+        localBufferingWasPlaying = false;
+        stopBufferingHeartbeat();
+        publishBuffering(false);
+        dispatchBuffering();
+        if (current == null || target == null || !target.hasMedia()) return;
+        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), false);
+        current.sendState(false, true);
+        localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+    }
+
+    /**
+     * Publishes the buffering flag through Set.file, the only custom field the Syncplay server
+     * forwards to every room member (State fields are rebuilt by the server and would be lost).
+     */
+    private void publishBuffering(boolean buffering) {
+        publishBuffering(buffering, false);
+    }
+
+    private void publishBuffering(boolean buffering, boolean done) {
+        SyncPlayClient current = client;
+        Player target = player;
+        if (current == null || target == null || !target.hasMedia()) return;
+        SyncPlayItem item = getLocalItem();
+        if (!item.hasEpisode()) return;
+        long duration = target.getDuration();
+        SyncPlayItem payload = done ? item.withBufferingDone() : item.withBuffering(buffering);
+        log("publish buffering=%s done=%s", buffering, done);
+        current.sendFile(payload.encode(), duration > 0 ? duration / 1000.0 : 0);
+    }
+
+    private void startBufferingHeartbeat() {
+        stopBufferingHeartbeat();
+        Runnable heartbeat = new Runnable() {
+            @Override
+            public void run() {
+                if (!localBuffering || client == null) return;
+                publishBuffering(true, false);
+                App.post(this, 5000);
+            }
+        };
+        bufferingHeartbeat = heartbeat;
+        App.post(heartbeat, 5000);
+    }
+
+    private void stopBufferingHeartbeat() {
+        Runnable heartbeat = bufferingHeartbeat;
+        bufferingHeartbeat = null;
+        if (heartbeat != null) App.removeCallbacks(heartbeat);
     }
 
     public void onLocalMediaChanged() {
@@ -308,10 +501,10 @@ public final class SyncPlayManager {
     }
 
     private void pushLocalMediaChange() {
-        syncFile();
         SyncPlayClient current = client;
         Player target = player;
-        if (current == null || target == null) return;
+        if (current == null || target == null || !target.hasMedia()) return;
+        syncFile();
         current.setLocalState(Math.max(0, target.getPosition() / 1000.0), !target.isPlayWhenReady());
         current.sendState(true, true);
         localPlaying = target.isPlayWhenReady();
@@ -321,7 +514,7 @@ public final class SyncPlayManager {
     private void syncFile() {
         SyncPlayClient current = client;
         Player target = player;
-        if (current == null || target == null) return;
+        if (current == null || target == null || !target.hasMedia()) return;
         SyncPlayItem item = getLocalItem();
         if (!item.hasEpisode()) return;
         long duration = target.getDuration();
@@ -352,25 +545,42 @@ public final class SyncPlayManager {
     private void applyState(SyncPlayClient.SyncPlayState state, @Nullable SyncPlayClient source, long joinedAt) {
         if (source == null || source != client) return;
         long now = SystemClock.elapsedRealtime();
-        if (now - joinedAt < JOIN_GRACE || now < localUntil) return;
         Player target = player;
-        if (target == null) return;
+        if (target == null || !target.hasMedia()) return;
         String setBy = state.setBy();
-        boolean mine = setBy.isEmpty() || setBy.equals(username);
+        boolean own = !setBy.isEmpty() && setBy.equals(username);
+        // The server echoes our own states back; applying them only makes the local player fight itself.
+        if (own) return;
+        boolean buffering = !setBy.isEmpty() && remoteBuffering.contains(setBy);
+        boolean resume = !buffering && !setBy.isEmpty() && setBy.equals(bufferingClearedBy) && now - bufferingClearedAt < 3000;
+        // Buffering transitions must not be dropped by the local/remote anti-flap windows.
+        if (now - joinedAt < JOIN_GRACE) return;
+        if (now < localUntil && !buffering && !resume) return;
         long position = Math.round(state.position() * 1000);
         if (state.paused() && target.isPlayWhenReady()) {
             remotePaused = true;
-            remoteUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+            remoteUntil = now + REMOTE_WINDOW;
             target.pause();
             localPlaying = false;
-            if (!mine && position > 0) toast(ResUtil.getString(R.string.sync_play_paused, setBy));
+            if (buffering) bufferingPaused = true;
+            else {
+                bufferingPaused = false;
+                if (position > 0) toast(ResUtil.getString(R.string.sync_play_paused, setBy));
+            }
         } else if (!state.paused() && !target.isPlayWhenReady()) {
             remotePaused = false;
-            remoteUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+            remoteUntil = now + REMOTE_WINDOW;
             target.play();
             localPlaying = true;
-            if (!mine && position > 0) toast(ResUtil.getString(R.string.sync_play_played, setBy));
+            if (bufferingPaused && remoteBuffering.isEmpty()) {
+                bufferingPaused = false;
+                toast(ResUtil.getString(R.string.sync_play_buffering_done, setBy));
+            } else if (!buffering && position > 0) {
+                toast(ResUtil.getString(R.string.sync_play_played, setBy));
+            }
         }
+        // The buffering period is over; a manual pause from now on belongs to the user.
+        if (resume) bufferingPaused = false;
         long duration = target.getDuration();
         if (duration <= 0) return;
         long drift = Math.abs(target.getPosition() - position);
@@ -382,6 +592,63 @@ public final class SyncPlayManager {
         remotePaused = state.paused();
         remoteUntil = timestamp + REMOTE_WINDOW;
         target.seekTo(Math.min(Math.max(position, 0), duration));
+    }
+
+    private void addRemoteBuffering(String name) {
+        if (name == null || name.isEmpty()) return;
+        if (!remoteBuffering.add(name)) {
+            // Repeated buffering states are heartbeats; keep the timeout alive.
+            scheduleBufferingTimeout(name);
+            return;
+        }
+        log("remote buffering: %s", name);
+        dispatchBuffering();
+        toast(ResUtil.getString(R.string.sync_play_buffering, name));
+        scheduleBufferingTimeout(name);
+    }
+
+    private void scheduleBufferingTimeout(String name) {
+        Runnable timeout = () -> {
+            if (!remoteBuffering.remove(name)) return;
+            bufferingTimeouts.remove(name);
+            log("remote buffering timeout: %s", name);
+            dispatchBuffering();
+            toast(ResUtil.getString(R.string.sync_play_buffering_timeout, name));
+            resumeIfBufferingPaused();
+        };
+        Runnable old = bufferingTimeouts.put(name, timeout);
+        if (old != null) App.removeCallbacks(old);
+        App.post(timeout, BUFFERING_TIMEOUT);
+    }
+
+    /** @return true when this state ends a buffering period. */
+    private boolean clearRemoteBuffering(String name) {
+        if (name == null || name.isEmpty()) return false;
+        Runnable timeout = bufferingTimeouts.remove(name);
+        if (timeout != null) App.removeCallbacks(timeout);
+        if (!remoteBuffering.remove(name)) return false;
+        bufferingClearedBy = name;
+        bufferingClearedAt = SystemClock.elapsedRealtime();
+        log("remote buffering done: %s", name);
+        dispatchBuffering();
+        return true;
+    }
+
+    private void onUserLeft(String name) {
+        if (clearRemoteBuffering(name)) resumeIfBufferingPaused();
+    }
+
+    private void resumeIfBufferingPaused() {
+        if (!remoteBuffering.isEmpty() || !bufferingPaused) return;
+        bufferingPaused = false;
+        SyncPlayClient current = client;
+        Player target = player;
+        if (current == null || target == null || !target.hasMedia()) return;
+        if (target.isPlayWhenReady()) return;
+        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), false);
+        current.sendState(false, true);
+        localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+        localPlaying = true;
     }
 
     public void testLatency(@Nullable String value, boolean tls, IntConsumer callback) {
@@ -496,6 +763,10 @@ public final class SyncPlayManager {
         for (Listener listener : listeners) listener.onUsersChanged();
     }
 
+    private void dispatchBuffering() {
+        for (Listener listener : listeners) listener.onBufferingChanged();
+    }
+
     private void dispatchRtt() {
         for (Listener listener : listeners) listener.onRttChanged();
     }
@@ -526,6 +797,7 @@ public final class SyncPlayManager {
                 username = name;
                 room = roomName;
                 joinedAt = SystemClock.elapsedRealtime();
+                SyncPlayManager.this.joinedAt = joinedAt;
                 connecting = false;
                 log("hello user=%s room=%s version=%s", name, roomName, version);
                 updateStatus(ResUtil.getString(R.string.sync_play_server_info, endpoint));
@@ -558,6 +830,7 @@ public final class SyncPlayManager {
                     addUser(name);
                     toast(ResUtil.getString(R.string.sync_play_joined, name));
                 } else if ("left".equals(type)) {
+                    onUserLeft(name);
                     removeUser(name);
                     toast(ResUtil.getString(R.string.sync_play_left_user, name));
                 }
@@ -594,8 +867,16 @@ public final class SyncPlayManager {
                 if (name.equals(username)) return;
                 SyncPlayItem item = SyncPlayItem.decode(file);
                 log("file from %s: %s", name, file);
+                if (!item.hasEpisode()) return;
+                if (item.isBuffering()) addRemoteBuffering(name);
+                else if (item.isBufferingDone()) {
+                    if (clearRemoteBuffering(name)) resumeIfBufferingPaused();
+                } else if (clearRemoteBuffering(name)) {
+                    // Buffering ended without an explicit resume: the user paused, stay paused.
+                    bufferingPaused = false;
+                }
                 SyncPlayItem local = getLocalItem();
-                if (!item.hasEpisode() || item.matches(local) || sameEpisode(local, item)) return;
+                if (item.matches(local) || sameEpisode(local, item)) return;
                 pendingRemote = item;
                 pendingRemoteBy = name;
                 applyPendingRemote(true);

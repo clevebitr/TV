@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -9,43 +8,53 @@
     <androidx.appcompat.widget.LinearLayoutCompat
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingBottom="24dp">
 
         <androidx.appcompat.widget.LinearLayoutCompat
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="24dp"
-            android:paddingTop="24dp"
-            android:paddingBottom="16dp">
+            android:paddingHorizontal="20dp"
+            android:paddingTop="20dp"
+            android:paddingBottom="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/back"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:text="@string/sync_play_back"
+                android:textSize="13sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
 
             <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/title"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:text="@string/sync_play_title"
                 android:textColor="?attr/colorOnSurface"
-                android:textSize="16sp" />
+                android:textSize="17sp"
+                android:textStyle="bold" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/latency"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="12dp"
+                android:layout_marginEnd="8dp"
                 android:fontFeatureSettings="tnum"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="12sp"
-                tools:text="延迟 32 ms" />
-
-            <androidx.appcompat.widget.AppCompatImageView
-                android:id="@+id/test"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/sync_play_test"
-                android:src="@drawable/ic_action_refresh" />
+                android:visibility="gone"
+                tools:text="延迟 32 ms"
+                tools:visibility="visible" />
 
             <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/refresh"
@@ -59,44 +68,109 @@
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 
+        <!-- Lobby -->
         <androidx.appcompat.widget.LinearLayoutCompat
-            android:id="@+id/config"
+            android:id="@+id/homeGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="24dp">
+            android:paddingHorizontal="20dp">
 
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                android:id="@+id/server"
+            <com.google.android.material.textview.MaterialTextView
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:background="@drawable/shape_accent"
-                android:completionThreshold="1"
-                android:hint="@string/sync_play_server"
-                android:imeOptions="actionDone"
-                android:importantForAutofill="no"
-                android:inputType="text"
-                android:paddingHorizontal="16dp"
-                android:singleLine="true"
-                android:textColor="?attr/colorOnSurface"
-                android:textColorHint="?attr/colorOnSurfaceVariant"
-                android:textSize="14sp"
-                tools:ignore="VisualLintTextFieldSize" />
-
-            <com.google.android.material.checkbox.MaterialCheckBox
-                android:id="@+id/tls"
-                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:minHeight="40dp"
-                android:text="@string/sync_play_tls"
-                android:textColor="?attr/colorOnSurface"
-                android:textSize="14sp" />
+                android:layout_marginBottom="16dp"
+                android:text="@string/sync_play_subtitle"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="13sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/create"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:minHeight="76dp"
+                android:paddingHorizontal="20dp"
+                android:text="@string/sync_play_create_room_button"
+                android:textSize="16sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/join"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="start|center_vertical"
+                android:minHeight="76dp"
+                android:paddingHorizontal="20dp"
+                android:text="@string/sync_play_join_room_button"
+                android:textSize="16sp" />
+
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/serverRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:background="@drawable/shape_accent"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp">
+
+                <androidx.appcompat.widget.LinearLayoutCompat
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/sync_play_server_title"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="14sp" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/serverValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="12sp"
+                        tools:text="syncplay.pl:8996" />
+
+                </androidx.appcompat.widget.LinearLayoutCompat>
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="›"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="22sp" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+        <!-- Shared nickname for create/join -->
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/nicknameGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp"
+            android:visibility="gone"
+            tools:visibility="visible">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/nickname"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="8dp"
                 android:background="@drawable/shape_accent"
                 android:hint="@string/sync_play_nickname"
@@ -110,55 +184,262 @@
                 android:textColorHint="?attr/colorOnSurfaceVariant"
                 android:textSize="14sp" />
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/room"
+            <com.google.android.material.textview.MaterialTextView
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="8dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="4dp"
+                android:text="@string/sync_play_nickname_desc"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="11sp" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+        <!-- Create room -->
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/createGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp"
+            android:visibility="gone"
+            tools:visibility="gone">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/sync_play_room_create_desc"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="13sp" />
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/createRoom"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="12dp"
                 android:background="@drawable/shape_accent"
-                android:hint="@string/sync_play_room"
-                android:imeOptions="actionDone"
+                android:digits="0123456789"
+                android:hint="@string/sync_play_room_hint"
+                android:imeOptions="actionNext"
                 android:importantForAutofill="no"
-                android:inputType="text"
-                android:maxLength="35"
+                android:inputType="number"
+                android:maxLength="11"
                 android:paddingHorizontal="16dp"
                 android:singleLine="true"
                 android:textColor="?attr/colorOnSurface"
                 android:textColorHint="?attr/colorOnSurfaceVariant"
+                android:textSize="16sp" />
+
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/regenerate"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="8dp"
+                    android:text="@string/sync_play_regenerate"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/copy"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="8dp"
+                    android:text="@string/sync_play_copy"
+                    android:textSize="12sp" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/serverInfoCreate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                tools:text="服务器：syncplay.pl:8996" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/submitCreate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:minHeight="52dp"
+                android:text="@string/sync_play_create_join"
+                android:textSize="15sp" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+        <!-- Join room -->
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/joinGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp"
+            android:visibility="gone"
+            tools:visibility="gone">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/sync_play_room_join_desc"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="13sp" />
+
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/joinRoom"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/shape_accent"
+                    android:digits="0123456789"
+                    android:hint="@string/sync_play_room_hint"
+                    android:imeOptions="actionDone"
+                    android:importantForAutofill="no"
+                    android:inputType="number"
+                    android:maxLength="11"
+                    android:paddingHorizontal="16dp"
+                    android:singleLine="true"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textColorHint="?attr/colorOnSurfaceVariant"
+                    android:textSize="16sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/paste"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/sync_play_paste"
+                    android:textSize="12sp" />
+
+            </androidx.appcompat.widget.LinearLayoutCompat>
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/serverInfoJoin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                tools:text="服务器：syncplay.pl:8996" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/submitJoin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:minHeight="52dp"
+                android:text="@string/sync_play_join_submit"
+                android:textSize="15sp" />
+
+        </androidx.appcompat.widget.LinearLayoutCompat>
+
+        <!-- Server selection -->
+        <androidx.appcompat.widget.LinearLayoutCompat
+            android:id="@+id/serverGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp"
+            android:visibility="gone"
+            tools:visibility="gone">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:text="@string/sync_play_server_desc"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="13sp" />
+
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/serverList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/customServer"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/shape_accent"
+                android:hint="@string/sync_play_server_address"
+                android:imeOptions="actionDone"
+                android:importantForAutofill="no"
+                android:inputType="textUri"
+                android:paddingHorizontal="16dp"
+                android:singleLine="true"
+                android:textColor="?attr/colorOnSurface"
+                android:textColorHint="?attr/colorOnSurfaceVariant"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/tls"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:minHeight="40dp"
+                android:text="@string/sync_play_tls"
+                android:textColor="?attr/colorOnSurface"
                 android:textSize="14sp" />
 
             <androidx.appcompat.widget.LinearLayoutCompat
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/join"
+                    android:id="@+id/testAll"
+                    style="@style/Widget.Material3.Button.TonalButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="@string/sync_play_join" />
+                    android:text="@string/sync_play_test_all" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/create"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:id="@+id/saveServer"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="12dp"
                     android:layout_weight="1"
-                    android:text="@string/sync_play_create" />
+                    android:text="@string/sync_play_confirm" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 
+        <!-- Connected room -->
         <androidx.appcompat.widget.LinearLayoutCompat
             android:id="@+id/roomGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingHorizontal="24dp"
+            android:paddingHorizontal="20dp"
             android:visibility="gone"
             tools:visibility="visible">
 
@@ -168,7 +449,7 @@
                 android:layout_height="wrap_content"
                 android:textColor="?attr/colorOnSurface"
                 android:textSize="14sp"
-                tools:text="房间：测试 · 你 · 延迟 32 ms" />
+                tools:text="房间：12345678 · 延迟 32 ms" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/userTitle"
@@ -185,7 +466,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="@string/sync_play_users_empty"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="14sp"
                 android:visibility="gone"
                 tools:visibility="visible" />
@@ -211,11 +492,10 @@
             android:id="@+id/status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="24dp"
-            android:paddingTop="12dp"
-            android:paddingBottom="24dp"
             android:accessibilityLiveRegion="polite"
-            android:textColor="?attr/colorOnSurface"
+            android:paddingHorizontal="20dp"
+            android:paddingTop="12dp"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp"
             android:visibility="gone"
             tools:text="正在连接 syncplay.pl:8996"
