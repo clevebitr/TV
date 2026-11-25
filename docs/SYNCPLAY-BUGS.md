@@ -42,6 +42,7 @@ USERS(1)
 - 用户列表不再用 `RecyclerView`：`dialog_sync_play.xml` 换成 `LinearLayoutCompat#users`，`SyncPlayDialog#renderUsers()` 用 `AdapterSyncPlayUserBinding` 逐行 inflate，彻底规避 `NestedScrollView` 内的测量问题。
 - `SyncPlayManager` 增加 join/leave 兜底：收到 `Set.user` 的 `joined`/`left` 事件时直接增删用户；打开面板且已连接时再主动 `requestUsers()` 一次。
 - 删除不再使用的 `SyncPlayUserAdapter`。
+- 本地实测（真服务器 + JVM 驱动）：客户端加入后列表显示 `alice bob`；`alice` 断线后立即变为 `bob`（不等 `List` 刷新）。
 
 **原分析（保留）**
 
@@ -71,6 +72,7 @@ USERS(1)
 - 手机版 / 电视版 `VideoActivity` 在 `onResume/onPause` 注册、注销 `EpisodeHandler`：按 `Episode#getName()` 在 `mEpisodeAdapter.getItems()` 里匹配后调用 `mVod.selectEpisode(item)`；已选中则直接返回，避免回环。
 - 电视版 `EpisodeAdapter` 补了 `getItems()`。
 - 换集后本地 `syncFile()` 会再发一次同名（对端按“同名忽略”处理）。
+- 本地实测（真服务器 + JVM 驱动）：对端发 `Set.file=第3集` → `[HANDLER] switchEpisode(第3集)` + 提示；重复发同名不再触发；本端换集后 `getEpisodeName()` 会上报新名字。
 
 **原方案（保留供参考）**
 
