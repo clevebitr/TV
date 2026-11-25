@@ -1,7 +1,7 @@
 # 一起看（Syncplay）已知问题
 
 > 记录时间：2026-11-25 · 基线：`syncplay-5.5.6` 分支（App 5.5.6 + 一起看）
-> 发布产物：`v5.5.6-syncplay`（4 个 APK，已用仓库 Secrets 中的密钥签名）
+> 发布产物：`v5.5.9-syncplay`（4 个 APK，versionCode 559，已用仓库 Secrets 中的密钥签名）
 
 ---
 
@@ -134,6 +134,27 @@ USERS(1)
   [HANDLER] switchTo(第9集, site=siteB, vod=vod9)
   [NOTIFY] SWITCH FAILED 第9集   ← 失败反馈
   ```
+
+**注意**：自动切源依赖目标站点存在于本机配置（同一个配置源/站点列表）；不同配置会提示失败。
+
+**补充（`5.5.9-syncplay`）：让换集真正可靠**
+
+对齐 Kazumi 的关键点，并修掉我们自己的问题：
+
+1. **发送时机**：Kazumi 在「播放器完成初始化」时对比 `currentFileName` 再发 `Set.file`。我们原来只靠 `PlayerManager.onMediaItemTransition`，不可靠 → 现在在起播入口 `startPlayback()`（每次起播，含换集/切源）显式调用 `SyncPlayManager#onLocalMediaChanged()`，并同时推送一个 `doSeek` 的 `State` 把房间时间轴切到新集；`onMediaItemTransition` 保留作兜底。
+2. **剧集标识**：除剧集名外增加 **index**（当前剧集列表序号）与站点/vodId，接收端匹配顺序 `名字 → index → 切源 → 失败提示`。
+3. **加入房间不要抢房主**：原来连接后立刻发布自己的 file，新人一进房就把房主拉回自己的集数。现在连接阶段**不再发布 file**：
+   - 空房间（`init` 无 user）→ 发自己的 file + `doSeek`（成为房主）；
+   - 有人房间（`init` 有 user）→ 记住房主，`List` 回来后用房主的 file 自动切到同一集（`adoptAuthority()`）。
+
+   本地实测：
+   ```
+   [NOTIFY] follow alice
+   [HANDLER] switchTo(第5集 idx=4 site=siteA)   ← 入房即同步房主剧集
+   --- alice switches episode
+   [HANDLER] switchTo(第6集 idx=5 site=siteA)   ← 换集跟随
+   ```
+4. 剧集实体在 `renderEpisodeSelection` / `startPlayback` 时缓存（`syncEpisode`），不再依赖 adapter 的即时选中态。
 
 **注意**：自动切源依赖目标站点存在于本机配置（同一个配置源/站点列表）；不同配置会提示失败。
 

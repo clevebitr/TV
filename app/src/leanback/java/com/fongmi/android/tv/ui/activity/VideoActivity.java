@@ -110,6 +110,8 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     private String pendingEpisode;
     private String pendingSite;
+    private int pendingIndex = -1;
+    private Episode syncEpisode;
 
     private final SyncPlayManager.EpisodeHandler syncEpisodeHandler = new SyncPlayManager.EpisodeHandler() {
 
@@ -120,11 +122,13 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         public SyncPlayItem getCurrentItem() {
             Site site = getSite();
             History history = mHistory;
-            Episode item = mEpisodeAdapter == null || mEpisodeAdapter.getItemCount() == 0 ? null : mEpisodeAdapter.getActivated();
+            Episode item = syncEpisode;
+            if (item == null && mEpisodeAdapter != null && mEpisodeAdapter.getItemCount() > 0) item = mEpisodeAdapter.getActivated();
             String episode = item == null || item.getName() == null ? "" : item.getName();
             String siteKey = site == null ? "" : site.getKey();
             String vodId = history != null && siteKey.equals(history.getSiteKey()) ? history.getVodId() : "";
-            return new SyncPlayItem(episode, siteKey, vodId);
+            int index = mEpisodeAdapter == null || item == null ? -1 : mEpisodeAdapter.getItems().indexOf(item);
+            return new SyncPlayItem(episode, siteKey, vodId, index);
         }
 
         @Override
@@ -133,7 +137,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             Site site = getSite();
             String current = site == null ? "" : site.getKey();
             if (!item.hasSource() || item.getSite().equals(current)) {
-                Episode local = findEpisode(item.getEpisode());
+                Episode local = findEpisode(item);
                 if (local == null) return false;
                 if (!local.isSelected()) mVod.selectEpisode(local);
                 return true;
@@ -144,6 +148,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             lastSite = current;
             lastSwitchAt = SystemClock.elapsedRealtime();
             pendingEpisode = item.getEpisode();
+            pendingIndex = item.getIndex();
             pendingSite = item.getSite();
             Vod vod = new Vod();
             vod.setSite(target);
@@ -154,10 +159,12 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
             return true;
         }
 
-        private Episode findEpisode(String name) {
+        private Episode findEpisode(SyncPlayItem item) {
             if (mEpisodeAdapter == null) return null;
-            for (Episode item : mEpisodeAdapter.getItems()) if (name.equals(item.getName())) return item;
-            return null;
+            for (Episode episode : mEpisodeAdapter.getItems()) if (item.getEpisode().equals(episode.getName())) return episode;
+            int index = item.getIndex();
+            if (index < 0 || index >= mEpisodeAdapter.getItemCount()) return null;
+            return mEpisodeAdapter.getItems().get(index);
         }
     };
 
@@ -572,7 +579,9 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void startPlayback(Result result, boolean useParse, long startPositionMs, History history, Episode episode) {
+        syncEpisode = episode;
         startPlayer(getHistoryKey(), result, useParse, getSite().getTimeout(), startPositionMs, VodPlaybackMedia.metadata(history, episode));
+        SyncPlayManager.get().onLocalMediaChanged();
     }
 
     @Override
@@ -620,10 +629,19 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
         if (name == null) return;
         Site site = getSite();
         if (site == null || !site.getKey().equals(pendingSite)) return;
+        int index = pendingIndex;
         pendingEpisode = null;
         pendingSite = null;
+        pendingIndex = -1;
         for (Episode item : items) {
             if (!name.equals(item.getName())) continue;
+            App.post(() -> {
+                if (mVod != null && !item.isSelected()) mVod.selectEpisode(item);
+            });
+            return;
+        }
+        if (index >= 0 && index < items.size()) {
+            Episode item = items.get(index);
             App.post(() -> {
                 if (mVod != null && !item.isSelected()) mVod.selectEpisode(item);
             });
@@ -640,6 +658,7 @@ public class VideoActivity extends PlaybackActivity implements VodPlaybackHost, 
 
     @Override
     public void renderEpisodeSelection(Episode item) {
+        syncEpisode = item;
         notifyItemChanged(mBinding.episode, mEpisodeAdapter);
         mBinding.episode.setSelectedPosition(mEpisodeAdapter.getPosition());
     }

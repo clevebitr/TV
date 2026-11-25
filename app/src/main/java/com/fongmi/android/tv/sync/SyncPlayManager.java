@@ -100,6 +100,7 @@ public final class SyncPlayManager {
     private volatile Player player;
     private volatile boolean localPlaying = true;
     private volatile EpisodeHandler episodeHandler;
+    private volatile String authority;
     private volatile boolean remotePaused;
     private volatile long remoteUntil;
     private volatile long localUntil;
@@ -203,9 +204,10 @@ public final class SyncPlayManager {
                     return;
                 }
                 connecting = false;
+                // Do not publish our file yet: a newcomer must adopt the room's episode first,
+                // and the only-user case is handled by the init event.
                 App.post(() -> {
                     dispatchSession();
-                    syncFile();
                     requestUsers();
                 });
             } catch (Exception e) {
@@ -275,6 +277,13 @@ public final class SyncPlayManager {
 
     public void onLocalMediaChanged() {
         syncFile();
+        SyncPlayClient current = client;
+        Player target = player;
+        if (current == null || target == null) return;
+        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), !target.isPlayWhenReady());
+        current.sendState(true, true);
+        localPlaying = target.isPlayWhenReady();
+        localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
     }
 
     private void pushLocalState(boolean doSeek) {
@@ -358,6 +367,23 @@ public final class SyncPlayManager {
         });
     }
 
+    private void adoptAuthority() {
+        String name = authority;
+        if (TextUtils.isEmpty(name) || name.equals(username)) return;
+        for (SyncPlayUser user : users) {
+            if (!name.equals(user.getName())) continue;
+            SyncPlayItem item = SyncPlayItem.decode(user.getRawFile());
+            if (!item.hasEpisode() || item.matches(getLocalItem())) {
+                authority = null;
+                return;
+            }
+            EpisodeHandler handler = episodeHandler;
+            authority = null;
+            if (handler != null) handler.switchTo(item);
+            return;
+        }
+    }
+
     private void addUser(String name) {
         if (TextUtils.isEmpty(name)) return;
         List<SyncPlayUser> list = new ArrayList<>(List.of(users));
@@ -432,11 +458,14 @@ public final class SyncPlayManager {
                 if (!isCurrent()) return;
                 if ("init".equals(type)) {
                     if (TextUtils.isEmpty(name)) {
+                        authority = null;
                         toast(ResUtil.getString(R.string.sync_play_only_user));
                         syncFile();
                         pushLocalState(true);
                     } else {
+                        authority = name;
                         toast(ResUtil.getString(R.string.sync_play_follow_user, name));
+                        requestUsers();
                     }
                     return;
                 }
@@ -461,6 +490,7 @@ public final class SyncPlayManager {
                 for (SyncPlayUser user : list) if (!user.isBlank()) filtered.add(user);
                 users = filtered.toArray(new SyncPlayUser[0]);
                 dispatchUsers();
+                adoptAuthority();
             });
         }
 

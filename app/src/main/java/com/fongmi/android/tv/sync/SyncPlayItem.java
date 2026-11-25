@@ -20,11 +20,17 @@ public final class SyncPlayItem {
     private final String episode;
     private final String site;
     private final String vodId;
+    private final int index;
 
     public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId) {
+        this(episode, site, vodId, -1);
+    }
+
+    public SyncPlayItem(@Nullable String episode, @Nullable String site, @Nullable String vodId, int index) {
         this.episode = normalize(episode);
         this.site = normalize(site);
         this.vodId = normalize(vodId);
+        this.index = index;
     }
 
     public static SyncPlayItem local(@Nullable String episode) {
@@ -35,7 +41,16 @@ public final class SyncPlayItem {
         if (value == null) return new SyncPlayItem("", "", "");
         String[] parts = value.split(String.valueOf(SEPARATOR), -1);
         if (parts.length < 3) return new SyncPlayItem(value, "", "");
-        return new SyncPlayItem(parts[0], parts[1], parts[2]);
+        int index = parts.length > 3 ? parseInt(parts[3]) : -1;
+        return new SyncPlayItem(parts[0], parts[1], parts[2], index);
+    }
+
+    private static int parseInt(String value) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /** Readable name for user list rows and notifications. */
@@ -66,6 +81,10 @@ public final class SyncPlayItem {
         return vodId;
     }
 
+    public int getIndex() {
+        return index;
+    }
+
     public boolean hasEpisode() {
         return !episode.isEmpty();
     }
@@ -87,7 +106,7 @@ public final class SyncPlayItem {
 
     public String encode() {
         if (!hasSource()) return episode;
-        String value = episode + SEPARATOR + site + SEPARATOR + vodId;
+        String value = episode + SEPARATOR + site + SEPARATOR + vodId + SEPARATOR + index;
         return value.length() > MAX_LENGTH ? episode : value;
     }
 

@@ -27,7 +27,13 @@ public final class SyncPlayUser {
         return name;
     }
 
+    /** Readable episode name (the wire payload is stripped). */
     public String getFile() {
+        return SyncPlayItem.displayName(file);
+    }
+
+    /** Raw Syncplay file name, may contain the source payload. */
+    public String getRawFile() {
         return file;
     }
 
