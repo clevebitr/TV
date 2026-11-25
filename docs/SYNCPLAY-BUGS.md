@@ -5,7 +5,7 @@
 
 ---
 
-## BUG-1 房间用户列表不显示
+## BUG-1 房间用户列表不显示 — 已修复（`5.5.7-syncplay` 待验证）
 
 **现象**：已连接房间、进度能同步，但「一起看」面板里的「房间用户」区域看不到任何用户（甚至连自己也没有）。
 
@@ -37,7 +37,13 @@ USERS(1)
 3. 双方不在同一房间（「创建房间」在房间名为空时会各生成随机名），此时列表里只有自己。
    - 验证：面板 `info` 行显示的房名是否一致。
 
-**建议修复方向**
+**已实施修复**
+
+- 用户列表不再用 `RecyclerView`：`dialog_sync_play.xml` 换成 `LinearLayoutCompat#users`，`SyncPlayDialog#renderUsers()` 用 `AdapterSyncPlayUserBinding` 逐行 inflate，彻底规避 `NestedScrollView` 内的测量问题。
+- `SyncPlayManager` 增加 join/leave 兜底：收到 `Set.user` 的 `joined`/`left` 事件时直接增删用户；打开面板且已连接时再主动 `requestUsers()` 一次。
+- 删除不再使用的 `SyncPlayUserAdapter`。
+
+**原分析（保留）**
 
 - 最省事：把 `recycler` 换成 `LinearLayoutCompat` + `LayoutInflater` 逐行填充，彻底规避滚动容器里的测量问题（用户量本身很小）。
 - 或给 `recycler` 设置 `android:layout_height="wrap_content"` + `android:nestedScrollingEnabled="false"` 之外，再显式 `setHasFixedSize(true)` 并在 `roomGroup` 可见后 `requestLayout()`。
@@ -45,7 +51,7 @@ USERS(1)
 
 ---
 
-## BUG-2 只能同步同一视频的进度，不能同步选集
+## BUG-2 只能同步同一视频的进度，不能同步选集 — 已修复（`5.5.7-syncplay` 待验证）
 
 **现象**：A 换集后，B 仍停留在原视频（只同步播放/暂停/进度）。
 
@@ -59,7 +65,14 @@ USERS(1)
 
 **要实现的行为**：一端换集 → 另一端自动切到对应剧集，并继续保持进度同步。
 
-**建议方案（5.5.6 架构）**
+**已实施修复**
+
+- `SyncPlayManager` 新增 `EpisodeHandler { getEpisodeName(); switchEpisode(name) }`；`syncFile()` 优先用当前剧集名（回退到媒体标题）；收到他人 `Set.file` 且与本地不同时，先提示再回调 `switchEpisode`。
+- 手机版 / 电视版 `VideoActivity` 在 `onResume/onPause` 注册、注销 `EpisodeHandler`：按 `Episode#getName()` 在 `mEpisodeAdapter.getItems()` 里匹配后调用 `mVod.selectEpisode(item)`；已选中则直接返回，避免回环。
+- 电视版 `EpisodeAdapter` 补了 `getItems()`。
+- 换集后本地 `syncFile()` 会再发一次同名（对端按“同名忽略”处理）。
+
+**原方案（保留供参考）**
 
 1. **发送端拿稳定标识**
    - 在 `PlayerManager` 暴露当前剧集信息（例如 `getEpisodeName()` / `getEpisodeUrl()`），或在 `VodPlaybackController#selectEpisode()` 时把当前 `Episode` 记到 `PlaySpec`/`PlayerManager`。

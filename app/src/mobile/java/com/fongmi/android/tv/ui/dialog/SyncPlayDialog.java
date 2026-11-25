@@ -8,17 +8,18 @@ import android.widget.ArrayAdapter;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewbinding.ViewBinding;
 
 import com.fongmi.android.tv.R;
+import com.fongmi.android.tv.databinding.AdapterSyncPlayUserBinding;
 import com.fongmi.android.tv.databinding.DialogSyncPlayBinding;
 import com.fongmi.android.tv.setting.SyncPlaySetting;
 import com.fongmi.android.tv.sync.SyncPlayEndpoint;
 import com.fongmi.android.tv.sync.SyncPlayManager;
-import com.fongmi.android.tv.ui.adapter.SyncPlayUserAdapter;
-import com.fongmi.android.tv.ui.custom.SpaceItemDecoration;
+import com.fongmi.android.tv.sync.SyncPlayUser;
 import com.fongmi.android.tv.utils.Notify;
 import com.fongmi.android.tv.utils.ResUtil;
 
@@ -29,7 +30,6 @@ import java.util.Random;
 public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayManager.Listener {
 
     private DialogSyncPlayBinding binding;
-    private SyncPlayUserAdapter adapter;
     private int testToken;
 
     public static SyncPlayDialog create() {
@@ -49,9 +49,6 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
     @Override
     protected void initView() {
         SyncPlayManager manager = SyncPlayManager.get();
-        adapter = new SyncPlayUserAdapter();
-        binding.recycler.setAdapter(adapter);
-        binding.recycler.addItemDecoration(new SpaceItemDecoration(1, 8));
         binding.server.setAdapter(new ArrayAdapter<>(requireContext(), android.R.layout.simple_list_item_1, getServers()));
         binding.server.setText(SyncPlaySetting.getEndpoint(), false);
         binding.tls.setChecked(SyncPlaySetting.isTls());
@@ -59,6 +56,7 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         binding.room.setText(manager.isConnected() ? manager.getRoom() : SyncPlaySetting.getRoom());
         manager.addListener(this);
         render();
+        if (manager.isConnected()) manager.requestUsers();
         test();
     }
 
@@ -148,10 +146,34 @@ public class SyncPlayDialog extends BaseBottomSheetDialog implements SyncPlayMan
         String latency = getLatencyText(manager.getRtt());
         binding.info.setText(ResUtil.getString(R.string.sync_play_connected, room) + " · " + latency);
         binding.info.setVisibility(TextUtils.isEmpty(room) ? View.GONE : View.VISIBLE);
-        adapter.setItems(manager.getUsers(), manager.getUsername());
-        binding.recycler.setVisibility(adapter.size() > 0 ? View.VISIBLE : View.GONE);
-        binding.empty.setVisibility(adapter.size() > 0 ? View.GONE : View.VISIBLE);
+        renderUsers(manager.getUsers(), manager.getUsername());
         binding.leave.setEnabled(true);
+    }
+
+    private void renderUsers(List<SyncPlayUser> users, String self) {
+        binding.users.removeAllViews();
+        for (int i = 0; i < users.size(); i++) {
+            SyncPlayUser user = users.get(i);
+            AdapterSyncPlayUserBinding item = AdapterSyncPlayUserBinding.inflate(getLayoutInflater(), binding.users, false);
+            boolean me = self != null && !self.isEmpty() && self.equals(user.getName());
+            item.name.setText(user.getName());
+            item.tag.setVisibility(me ? View.VISIBLE : View.GONE);
+            String info = getInfo(user);
+            item.info.setText(info);
+            item.info.setVisibility(TextUtils.isEmpty(info) ? View.GONE : View.VISIBLE);
+            LinearLayoutCompat.LayoutParams params = new LinearLayoutCompat.LayoutParams(LinearLayoutCompat.LayoutParams.MATCH_PARENT, LinearLayoutCompat.LayoutParams.WRAP_CONTENT);
+            if (i > 0) params.topMargin = ResUtil.dp2px(8);
+            binding.users.addView(item.getRoot(), params);
+        }
+        binding.users.setVisibility(users.isEmpty() ? View.GONE : View.VISIBLE);
+        binding.empty.setVisibility(users.isEmpty() ? View.VISIBLE : View.GONE);
+    }
+
+    private String getInfo(SyncPlayUser user) {
+        String room = user.getRoom();
+        String file = user.getFile();
+        if (TextUtils.isEmpty(file)) return room;
+        return TextUtils.isEmpty(room) ? file : room + " · " + file;
     }
 
     private String getLatencyText(int rtt) {

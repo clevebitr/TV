@@ -47,6 +47,7 @@ import com.fongmi.android.tv.api.config.VodConfig;
 import com.fongmi.android.tv.bean.CastVideo;
 import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Episode;
+import com.fongmi.android.tv.sync.SyncPlayManager;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
@@ -117,6 +118,28 @@ import java.util.Objects;
 public class VideoActivity extends PlaybackActivity implements Clock.Callback, CustomKeyDown.Listener, TrackDialog.Listener, ControlDialog.Listener, ParseDialog.Listener, VodPlaybackHost, FlagAdapter.OnClickListener, EpisodeAdapter.OnClickListener, QualityAdapter.OnClickListener, QuickAdapter.OnClickListener, CastDialog.Listener, InfoDialog.Listener {
 
     private ActivityVideoBinding mBinding;
+
+    private final SyncPlayManager.EpisodeHandler syncEpisodeHandler = new SyncPlayManager.EpisodeHandler() {
+
+        @Override
+        public String getEpisodeName() {
+            if (mEpisodeAdapter == null || mEpisodeAdapter.getItemCount() == 0) return "";
+            Episode item = mEpisodeAdapter.getActivated();
+            return item == null || item.getName() == null ? "" : item.getName();
+        }
+
+        @Override
+        public boolean switchEpisode(String name) {
+            if (mEpisodeAdapter == null || mVod == null) return false;
+            for (Episode item : mEpisodeAdapter.getItems()) {
+                if (!name.equals(item.getName())) continue;
+                if (!item.isSelected()) mVod.selectEpisode(item);
+                return true;
+            }
+            return false;
+        }
+    };
+
     private ViewGroup.LayoutParams mFrameParams;
     private Observer<Result> mObserveDetail;
     private Observer<Result> mObservePlayer;
@@ -285,6 +308,19 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         mVod.reset();
         setOrient();
         checkId();
+    }
+
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        SyncPlayManager.get().setEpisodeHandler(syncEpisodeHandler);
+    }
+
+    @Override
+    protected void onPause() {
+        SyncPlayManager.get().clearEpisodeHandler(syncEpisodeHandler);
+        super.onPause();
     }
 
     @Override

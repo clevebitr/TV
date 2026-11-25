@@ -190,17 +190,12 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
-            <com.fongmi.android.tv.ui.custom.CustomRecyclerView
-                android:id="@+id/recycler"
+            <androidx.appcompat.widget.LinearLayoutCompat
+                android:id="@+id/users"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                android:nestedScrollingEnabled="false"
-                android:overScrollMode="never"
                 android:layout_marginTop="8dp"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-                tools:listitem="@layout/adapter_sync_play_user" />
+                android:orientation="vertical" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/leave"

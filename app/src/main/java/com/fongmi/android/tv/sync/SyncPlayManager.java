@@ -45,6 +45,15 @@ public final class SyncPlayManager {
         String getMediaTitle();
     }
 
+    public interface EpisodeHandler {
+
+        /** Name of the episode that is currently playing, used as the Syncplay file name. */
+        String getEpisodeName();
+
+        /** Switch to the episode with the given name. Returns true when it was handled. */
+        boolean switchEpisode(String name);
+    }
+
     public interface Listener {
 
         default void onSessionChanged() {
@@ -90,6 +99,7 @@ public final class SyncPlayManager {
     private volatile int session;
     private volatile Player player;
     private volatile boolean localPlaying = true;
+    private volatile EpisodeHandler episodeHandler;
     private volatile boolean remotePaused;
     private volatile long remoteUntil;
     private volatile long localUntil;
@@ -100,6 +110,14 @@ public final class SyncPlayManager {
 
     public void setPlayer(@Nullable Player player) {
         this.player = player;
+    }
+
+    public void setEpisodeHandler(@Nullable EpisodeHandler handler) {
+        this.episodeHandler = handler;
+    }
+
+    public void clearEpisodeHandler(@Nullable EpisodeHandler handler) {
+        if (this.episodeHandler == handler) this.episodeHandler = null;
     }
 
     public void addListener(Listener listener) {
@@ -273,10 +291,20 @@ public final class SyncPlayManager {
         SyncPlayClient current = client;
         Player target = player;
         if (current == null || target == null) return;
-        String title = target.getMediaTitle();
-        if (TextUtils.isEmpty(title)) return;
+        String name = getLocalFile();
+        if (TextUtils.isEmpty(name)) return;
         long duration = target.getDuration();
-        current.sendFile(title, duration > 0 ? duration / 1000.0 : 0);
+        current.sendFile(name, duration > 0 ? duration / 1000.0 : 0);
+    }
+
+    private String getLocalFile() {
+        EpisodeHandler handler = episodeHandler;
+        if (handler != null) {
+            String name = handler.getEpisodeName();
+            if (!TextUtils.isEmpty(name)) return name;
+        }
+        Player target = player;
+        return target == null ? "" : target.getMediaTitle();
     }
 
     private boolean isRemote(boolean playWhenReady) {
@@ -328,6 +356,22 @@ public final class SyncPlayManager {
             int result = SyncPlayClient.measure(endpoint.getHost(), endpoint.getPort(), tls);
             if (callback != null) App.post(() -> callback.accept(result));
         });
+    }
+
+    private void addUser(String name) {
+        if (TextUtils.isEmpty(name)) return;
+        List<SyncPlayUser> list = new ArrayList<>(List.of(users));
+        for (SyncPlayUser user : list) if (user.getName().equals(name)) return;
+        list.add(new SyncPlayUser(room, name, "", false));
+        users = list.toArray(new SyncPlayUser[0]);
+        dispatchUsers();
+    }
+
+    private void removeUser(String name) {
+        List<SyncPlayUser> list = new ArrayList<>(List.of(users));
+        if (!list.removeIf(user -> user.getName().equals(name))) return;
+        users = list.toArray(new SyncPlayUser[0]);
+        dispatchUsers();
     }
 
     private void updateStatus(String status) {
@@ -397,8 +441,13 @@ public final class SyncPlayManager {
                     return;
                 }
                 if (name.equals(username)) return;
-                if ("joined".equals(type)) toast(ResUtil.getString(R.string.sync_play_joined, name));
-                else if ("left".equals(type)) toast(ResUtil.getString(R.string.sync_play_left_user, name));
+                if ("joined".equals(type)) {
+                    addUser(name);
+                    toast(ResUtil.getString(R.string.sync_play_joined, name));
+                } else if ("left".equals(type)) {
+                    removeUser(name);
+                    toast(ResUtil.getString(R.string.sync_play_left_user, name));
+                }
                 requestUsers();
             });
         }
@@ -426,7 +475,10 @@ public final class SyncPlayManager {
             if (!isCurrent()) return;
             App.post(() -> {
                 if (!isCurrent() || name.equals(username)) return;
+                if (file.equals(getLocalFile())) return;
                 toast(ResUtil.getString(R.string.sync_play_file, name, file));
+                EpisodeHandler handler = episodeHandler;
+                if (handler != null) handler.switchEpisode(file);
             });
         }
 
