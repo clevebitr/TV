@@ -289,6 +289,8 @@
     <string name="sync_play_connected">房間：%1$s</string>
     <string name="sync_play_left">已離開房間</string>
     <string name="sync_play_connect_fail">一起看連線失敗：%1$s</string>
+    <string name="sync_play_switch_fail">無法切換到 %1$s：找不到該劇集或播放來源</string>
+    <string name="sync_play_source_changed">已切換到播放來源「%1$s」</string>
     <string name="sync_play_disconnected">一起看已中斷：%1$s</string>
     <string name="sync_play_only_user">您目前是房間中的唯一使用者</string>
     <string name="sync_play_follow_user">目前以 %1$s 的進度為準</string>

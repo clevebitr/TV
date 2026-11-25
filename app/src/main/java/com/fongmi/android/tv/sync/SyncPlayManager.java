@@ -47,11 +47,11 @@ public final class SyncPlayManager {
 
     public interface EpisodeHandler {
 
-        /** Name of the episode that is currently playing, used as the Syncplay file name. */
-        String getEpisodeName();
+        /** Episode and source that are currently playing, published as the Syncplay file name. */
+        SyncPlayItem getCurrentItem();
 
-        /** Switch to the episode with the given name. Returns true when it was handled. */
-        boolean switchEpisode(String name);
+        /** Switch to the remote item, changing the crawler source when needed. */
+        boolean switchTo(SyncPlayItem item);
     }
 
     public interface Listener {
@@ -291,20 +291,20 @@ public final class SyncPlayManager {
         SyncPlayClient current = client;
         Player target = player;
         if (current == null || target == null) return;
-        String name = getLocalFile();
-        if (TextUtils.isEmpty(name)) return;
+        SyncPlayItem item = getLocalItem();
+        if (!item.hasEpisode()) return;
         long duration = target.getDuration();
-        current.sendFile(name, duration > 0 ? duration / 1000.0 : 0);
+        current.sendFile(item.encode(), duration > 0 ? duration / 1000.0 : 0);
     }
 
-    private String getLocalFile() {
+    private SyncPlayItem getLocalItem() {
         EpisodeHandler handler = episodeHandler;
         if (handler != null) {
-            String name = handler.getEpisodeName();
-            if (!TextUtils.isEmpty(name)) return name;
+            SyncPlayItem item = handler.getCurrentItem();
+            if (item != null && item.hasEpisode()) return item;
         }
         Player target = player;
-        return target == null ? "" : target.getMediaTitle();
+        return SyncPlayItem.local(target == null ? "" : target.getMediaTitle());
     }
 
     private boolean isRemote(boolean playWhenReady) {
@@ -475,10 +475,14 @@ public final class SyncPlayManager {
             if (!isCurrent()) return;
             App.post(() -> {
                 if (!isCurrent() || name.equals(username)) return;
-                if (file.equals(getLocalFile())) return;
-                toast(ResUtil.getString(R.string.sync_play_file, name, file));
+                SyncPlayItem item = SyncPlayItem.decode(file);
+                if (!item.hasEpisode() || item.matches(getLocalItem())) return;
                 EpisodeHandler handler = episodeHandler;
-                if (handler != null) handler.switchEpisode(file);
+                if (handler != null && handler.switchTo(item)) {
+                    toast(ResUtil.getString(R.string.sync_play_file, name, item.getEpisode()));
+                } else {
+                    toast(ResUtil.getString(R.string.sync_play_switch_fail, item.getEpisode()));
+                }
             });
         }
 

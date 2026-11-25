@@ -114,6 +114,29 @@ USERS(1)
 - [ ] 换集期间的暂停/播放状态与房间一致
 - [ ] 用户列表在 1 人 / 2 人 / 3 人时都正确（BUG-1 回归）
 
+## BUG-3 换集只用剧集名匹配，跨播放源时会静默失败 — 已修复
+
+**现象**：两端播放源（爬虫站点）不同时，A 换集 B 没反应，也没有任何提示。
+
+**实现**
+
+- `Set.file` 载荷升级为 `剧集名\u0001站点key\u0001vodId`（`SyncPlayItem`，≤240 字符；对非本 App 客户端仍可读，用户列表/提示只显示剧集名）。
+- 接收端按优先级处理：
+  1. 同站点（或对端未携带源）→ 在本地剧集列表按名字匹配后 `mVod.selectEpisode(item)`；
+  2. 不同站点 → 用 `VodConfig.get().getSite(key)` 解析站点，构造 `Vod(site, vodId)` 调 `mVod.selectSource(vod)`，并记下待选剧集，等详情返回后（`renderEpisodes`）自动选中；提示「已切换到播放源 X」；
+  3. 站点不存在 / 剧集找不到 → 提示「无法切换到 X：未找到该剧集或播放源」（不再静默）。
+- 防抖动：15 秒内不会反复切回刚离开的站点（避免两端互相来回切源）；`getCurrentItem()` 只有在 `History.siteKey == 当前站点` 时才上报 `vodId`，避免发出错配的 site/vod 组合。
+- 本地实测（真服务器 + JVM 驱动）：
+  ```
+  [alice] file by bob raw=第1集|siteA|vod1
+  [HANDLER] switchTo(第3集, site=siteB, vod=vod9)
+  [NOTIFY] alice switched to 第3集
+  [HANDLER] switchTo(第9集, site=siteB, vod=vod9)
+  [NOTIFY] SWITCH FAILED 第9集   ← 失败反馈
+  ```
+
+**注意**：自动切源依赖目标站点存在于本机配置（同一个配置源/站点列表）；不同配置会提示失败。
+
 ---
 
 ## 附：本轮发布信息

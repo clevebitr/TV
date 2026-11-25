@@ -300,6 +300,8 @@
     <string name="sync_play_connected">Room: %1$s</string>
     <string name="sync_play_left">Left the room</string>
     <string name="sync_play_connect_fail">Sync play failed: %1$s</string>
+    <string name="sync_play_switch_fail">Cannot switch to %1$s: episode or source not found</string>
+    <string name="sync_play_source_changed">Switched to source %1$s</string>
     <string name="sync_play_disconnected">Sync play disconnected: %1$s</string>
     <string name="sync_play_only_user">You are the only user in this room</string>
     <string name="sync_play_follow_user">Following the progress of %1$s</string>

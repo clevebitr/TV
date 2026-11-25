@@ -379,7 +379,7 @@ public class SyncPlayClient {
                     JSONObject detail = value.optJSONObject(name);
                     if (detail == null) continue;
                     JSONObject file = detail.optJSONObject("file");
-                    String fileName = file == null ? "" : file.optString("name", "");
+                    String fileName = file == null ? "" : SyncPlayItem.displayName(file.optString("name", ""));
                     boolean ready = detail.optBoolean("isReady", false);
                     users.add(new SyncPlayUser(roomName, name, fileName, ready));
                 }
