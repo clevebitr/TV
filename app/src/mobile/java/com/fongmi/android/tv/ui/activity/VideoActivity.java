@@ -51,6 +51,7 @@ import com.fongmi.android.tv.bean.Danmaku;
 import com.fongmi.android.tv.bean.Episode;
 import com.fongmi.android.tv.sync.SyncPlayItem;
 import com.fongmi.android.tv.sync.SyncPlayManager;
+import com.fongmi.android.tv.sync.SyncPlayOverlay;
 import com.fongmi.android.tv.bean.Flag;
 import com.fongmi.android.tv.bean.History;
 import com.fongmi.android.tv.bean.Keep;
@@ -128,6 +129,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     private String pendingSite;
     private int pendingIndex = -1;
     private Episode syncEpisode;
+    private SyncPlayOverlay syncOverlay;
     private boolean syncSwitching;
     private long syncSwitchAt;
     private String syncSwitchName;
@@ -379,6 +381,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
         setViewModel();
         showProgress();
         setAnimator();
+        syncOverlay = SyncPlayOverlay.attach(mBinding.video);
     }
 
     @Override
@@ -1713,6 +1716,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     protected void onStart() {
         super.onStart();
         SyncPlayManager.get().setEpisodeHandler(syncEpisodeHandler);
+        if (syncOverlay != null) syncOverlay.render();
         mClock.stop().start();
         setAudioOnly(false);
         setStop(false);
@@ -1742,6 +1746,7 @@ public class VideoActivity extends PlaybackActivity implements Clock.Callback, C
     @Override
     protected void onDestroy() {
         if (isFinishing()) SyncPlayManager.get().leave();
+        if (syncOverlay != null) syncOverlay.detach();
         mClock.release();
         saveHistory(true);
         Timer.get().reset();

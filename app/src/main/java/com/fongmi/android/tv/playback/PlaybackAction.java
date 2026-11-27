@@ -104,7 +104,7 @@ public final class PlaybackAction {
 
     private static float applySpeedText(PlayerManager player, TextView speed, String text) {
         setText(speed, text);
-        return player.getSpeed();
+        return player.getUserSpeed();
     }
 
     private static void setText(TextView view, CharSequence text) {

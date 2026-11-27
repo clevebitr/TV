@@ -310,6 +310,69 @@ E/AndroidRuntime: FATAL EXCEPTION: main
 
 ---
 
+## BUG-9 高延迟下进度被反复拉回、缓冲被打断 — 已修复
+
+**现象**：Syncplay 服务器延迟较高（或对端网络较差）时，进度会被反复 seek 拉回，播放器的缓冲进度几乎每次都被「拉回」重置；缓冲等待只有一闪而过的 toast，看不出房间为什么停住。
+
+**根因（对照 `Syncplay/syncplay` 服务端源码）**
+
+1. `syncplay/server.py` 的 `Room.getPosition()` 每秒把房间时间轴重锚到 `min(watchers)`，即**房间进度跟着最慢的成员**。
+2. 我们原来的状态回执沿用收到的（或上一次事件快照的）`position`，于是“落后的位置”被写回服务端 → 房间时间轴被拽回去 → 所有人 drift 变大 → 再 seek 回来 → 缓冲又被清空，形成循环。
+3. 纠偏 seek 只受 `REMOTE_WINDOW`(1.5s) 限流；seek 后播放器重新缓冲时 `getPosition()` 仍是旧值/目标值，下一批 State 又满足 drift → 反复 seek。
+4. 自己纠偏 seek 触发的 `onPositionDiscontinuity`（media3 会在 seek 完成后再次回调 `SEEK_ADJUSTMENT`）超过 1.5s 窗口后会被 `onLocalSeek()` 当成用户 seek 广播出去 → 双端互相 seek。
+5. 纠偏 seek 引起的重缓冲 800ms 后被当成“本端网络慢”，于是把整个房间暂停。
+
+**修复**
+
+- 状态回执改到主线程按**实时播放位置**构造（`Session#onStateReply` → `replyState()`），并遵循服务端「min(watchers)」语义：上报 `max(本端位置, 房间位置估计)`，落后的客户端不再把房间拽回去。
+- `SyncPlayClient` 补齐协议语义：自己的 state 变更未被服务端 ack 前，回执只发 ping + `ignoringOnTheFly`（与官方客户端一致），并加 3 秒兜底避免永久静音。
+- 纠偏 seek：延迟相关死区（`SEEK_DRIFT + rtt/2`，最多 +2.5s）、递增冷却（4/6/8/10s）、缓冲中不 seek，`seekGuardTarget` 按位置+时间窗口过滤自己 seek 的回声。
+- 纠偏 seek 造成的重缓冲有 6 秒宽限期（`seekBufferingUntil`），不会再误报“本端缓冲”去暂停房间。
+- 收到对端缓冲状态时立即本地暂停（`pauseForBuffering()`），不等 paused State，避免先跑远再被拉回。
+
+**缓冲等待叠加层**
+
+- 新增 `sync/SyncPlayOverlay` + `res/layout/view_sync_buffering.xml`：等待对端缓冲时在播放器内叠加「正在等待 xxx 缓冲…」+ 加载指示器，`SyncPlayManager#getBufferingMessage()` 提供文案，`onBufferingChanged` 驱动刷新。
+- 两端 `VideoActivity#initView()` 挂载到 `mBinding.video`（`index 1`，在播放器之上、控件之下），`onDestroy()` 解绑；本端缓冲仍沿用播放器自带的加载指示器。
+
+---
+
+## BUG-10 用「变速追平」替代频繁 seek，并兼容播放器倍速 — 已实现
+
+**目标**：与官方客户端一致——小偏差不 seek（seek 会丢弃当前缓冲），而是短暂调整播放速率慢慢追平；同时用户的倍速选择、UI 显示与历史记录必须不受影响。
+
+**实现**
+
+- `PlayerManager` 拆成两个值：`speed`（用户选择，UI/历史/`getSpeedText()` 都用它）与 `tempo`（同步用的临时倍率，不持久化、不上 UI）。
+  - `getSpeed()` 仍返回实时速率（DLNA / `server/process/Media` 用），新增 `getUserSpeed()`。
+  - `setSpeed/addSpeed/subSpeed/toggleSpeed` 全部基于 `getUserSpeed()`；用户手动调速会清掉 `tempo`。
+  - 新增 `setSyncTempo(float)`：`speed * tempo` 应用到播放器，不支持变速的播放器返回 false。
+  - `PlaybackAction.applySpeedText()` 与 `ControlDialog` 历史写入改回「用户速度」，避免把 0.95 记进历史/播放器面板。
+- `SyncPlayManager` 阈值改成官方语义：`SEEK_DRIFT` 1.5s → 4s（`rewindThreshold`），落后 5s 以上才向前 seek（`fastforwardThreshold`）；偏差 >1.5s 时 `0.95x`（落后则 `1.05x`）追平，回到 0.15s 内恢复 1.00x，并 toast 提示一次。
+- 暂停/缓冲/seek/换集/离开都会 `resetTempo()`，不会把 0.95 带到下一集或下一个状态。
+
+**为什么落后方向用 1.05x**：官方 `dontSlowDownWithMe` 场景下落后端只上报全局位置、不做任何补偿，会长期落后；我们既然已经用 `max(本端, 房间)` 上报，落后端用一个对称的微加速收敛，比等 5s 再跳更平滑。
+
+---
+
+## 关于「换集改用 Set.playlistIndex」的评估（未实现）
+
+服务端语义（`server.py` / `protocols.py`）：
+
+- `Set.playlistChange{files}` → `room.setPlaylist` 广播给房间；`playlistIsValid()` 限制 **250 项 / 合计 10000 字符**。
+- `Set.playlistIndex{index}` → `room.setPlaylistIndex` 并把 `{user,index}` 广播给**所有人（含发送者）**；客户端 `changeToPlaylistIndex` 只是取 `roomPlaylist[index]` 这个名字。
+- 加入房间时服务端一定会发一次 `playlistChange` + `playlistIndex`（我们目前把这条当成 `init` 事件用）。
+
+结论：**不建议作为换集主通道**，理由是 index 只有在「所有人共享同一份 playlist」时才唯一；我们两端可能来自不同采集源，集名/集数不同，index 会指错集。当前 `Set.file` 里的 `剧集sitevodIdindex剧名` 反而是 name-first、index-fallback、可跨源定位的，更稳。
+
+如果确实要和**官方客户端（mpv/VLC/GUI）**混房间，可以再加一层互操作（不影响现有通道）：
+1. 只在房间 playlist 为空或与本端完全一致时发 `Set.playlistChange`（避免两端互相覆盖），超长直接不发。
+2. 换集时额外发 `Set.playlistIndex`。
+3. `hadFirstPlaylistIndex` 区分「加入时的 init」与「实时切集」，否则我们现在的 `handleSet` 会把每次切集误判成 init。
+4. 接收端仍以 `Set.file` 为准，`playlistIndex` 只作为兜底映射。
+
+---
+
 ## 附：本轮发布信息
 
 - 分支：`syncplay-5.5.6`（`fongmi` 保持 5.8.9；旧状态在 `backup/5.8.9-syncplay`）

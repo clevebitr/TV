@@ -334,4 +334,6 @@
     <string name="sync_play_buffering_timeout">%1$s 緩衝逾時，繼續播放</string>
     <string name="sync_play_buffering_wait">正在等待 %1$s 緩衝完成</string>
     <string name="sync_play_buffering_tag">緩衝中</string>
+    <string name="sync_play_overlay_wait">正在等待 %1$s 緩衝…</string>
+    <string name="sync_play_tempo">同步偏差較大，已自動調速為 %1$.2f 倍</string>
 </resources>

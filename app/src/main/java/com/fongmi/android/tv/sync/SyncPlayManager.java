@@ -50,6 +50,16 @@ public final class SyncPlayManager {
         void seekTo(long time);
 
         String getMediaTitle();
+
+        /**
+         * Applies a temporary playback rate multiplier for sync correction. It must not change the
+         * speed the user selected, nor the speed shown in the UI or stored in the history.
+         *
+         * @return false when the player cannot change its speed.
+         */
+        default boolean setSyncTempo(float value) {
+            return false;
+        }
     }
 
     public interface EpisodeHandler {
@@ -79,7 +89,18 @@ public final class SyncPlayManager {
         }
     }
 
-    private static final long SEEK_DRIFT = 1500;
+    private static final long SEEK_DRIFT = 4000;
+    private static final long SEEK_FASTFORWARD = 5000;
+    private static final long SEEK_DEAD_ZONE = 400;
+    private static final long SEEK_COOLDOWN = 4000;
+    private static final long SEEK_CALM = 12000;
+    private static final long SEEK_GUARD = 10000;
+    private static final long SEEK_GUARD_DRIFT = 6000;
+    private static final long SEEK_BUFFER_GRACE = 6000;
+    private static final long TEMPO_DRIFT = 1500;
+    private static final long TEMPO_RESET = 150;
+    private static final float TEMPO_SLOW = 0.95f;
+    private static final float TEMPO_FAST = 1.05f;
     private static final long REMOTE_WINDOW = 1500;
     private static final long JOIN_GRACE = 1500;
     private static final long BUFFERING_DELAY = 800;
@@ -118,9 +139,18 @@ public final class SyncPlayManager {
     private volatile boolean applyingRemote;
     private volatile String authority;
     private volatile boolean remotePaused;
+    private volatile double roomPosition;
+    private volatile long roomPositionAt;
+    private volatile boolean roomPaused = true;
     private volatile long remoteUntil;
     private volatile long localUntil;
     private volatile long lastSeekAt;
+    private volatile int seekCount;
+    private volatile long seekGuardTarget = -1;
+    private volatile long seekGuardUntil;
+    private volatile long seekBufferingUntil;
+    private volatile float tempo = 1f;
+    private volatile boolean tempoUnsupported;
     private volatile long joinedAt;
     private final Set<String> remoteBuffering = ConcurrentHashMap.newKeySet();
     private final Map<String, Runnable> bufferingTimeouts = new ConcurrentHashMap<>();
@@ -271,6 +301,8 @@ public final class SyncPlayManager {
     private void close() {
         session++;
         connecting = false;
+        resetTempo();
+        tempoUnsupported = false;
         SyncPlayClient current = client;
         client = null;
         if (current != null) current.close();
@@ -280,6 +312,14 @@ public final class SyncPlayManager {
         username = "";
         endpoint = "";
         joinedAt = 0;
+        lastSeekAt = 0;
+        seekCount = 0;
+        seekGuardTarget = -1;
+        seekGuardUntil = 0;
+        seekBufferingUntil = 0;
+        roomPosition = 0;
+        roomPositionAt = 0;
+        roomPaused = true;
         localItem = null;
         pendingRemote = null;
         pendingRemoteBy = "";
@@ -314,6 +354,20 @@ public final class SyncPlayManager {
         return name != null && remoteBuffering.contains(name);
     }
 
+    public String getFirstBufferingUser() {
+        for (String name : remoteBuffering) return name;
+        return "";
+    }
+
+    /**
+     * Reason the room is paused for buffering, ready to be rendered by the player overlay.
+     * Empty when nobody buffers: our own buffering already shows the player loading indicator.
+     */
+    public String getBufferingMessage() {
+        String name = getFirstBufferingUser();
+        return name.isEmpty() ? "" : ResUtil.getString(R.string.sync_play_overlay_wait, name);
+    }
+
     public void onLocalPlayState(boolean playWhenReady) {
         localPlaying = playWhenReady;
         SyncPlayClient current = client;
@@ -323,8 +377,7 @@ public final class SyncPlayManager {
         // to press play: otherwise the buffering user immediately falls behind.
         if (playWhenReady && localBuffering) {
             // We are still buffering: keep the room paused until the stream is ready.
-            current.setLocalState(Math.max(0, target.getPosition() / 1000.0), true);
-            current.sendState(false, true);
+            sendState(false, true, target.getPosition(), true);
             return;
         }
         if (playWhenReady && !remoteBuffering.isEmpty()) {
@@ -334,19 +387,119 @@ public final class SyncPlayManager {
         }
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
         if (isRemote(playWhenReady)) return;
-        current.setLocalState(target.getPosition() / 1000.0, !playWhenReady);
-        current.sendState(false, true);
+        sendState(false, true);
     }
 
     public void onLocalSeek() {
         SyncPlayClient current = client;
         Player target = player;
         if (current == null || target == null || !target.hasMedia()) return;
-        if (SystemClock.elapsedRealtime() < remoteUntil) return;
-        localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
+        long timestamp = SystemClock.elapsedRealtime();
+        if (timestamp < remoteUntil) return;
+        // The discontinuity of our own catch-up seek (media3 reports it again after the seek
+        // resolves) must not be broadcast, otherwise every peer seeks with us and ping-pongs.
+        if (isOwnSeek(target.getPosition(), timestamp)) {
+            log("skip own sync seek");
+            return;
+        }
+        resetTempo();
+        seekGuardTarget = -1;
+        seekGuardUntil = 0;
+        seekCount = 0;
+        localUntil = timestamp + REMOTE_WINDOW;
         localPlaying = target.isPlayWhenReady();
-        current.setLocalState(target.getPosition() / 1000.0, !localPlaying);
-        current.sendState(true, true);
+        sendState(true, true);
+    }
+
+    /**
+     * Publishes the local play state. The room timeline is the slowest member of the room, so a
+     * client that is still catching up must not report its own lagging position: it would drag the
+     * whole room (and every buffer of the other clients) backwards.
+     */
+    private void sendState(boolean doSeek, boolean stateChange) {
+        Player target = player;
+        if (target == null || !target.hasMedia()) return;
+        sendState(doSeek, stateChange, target.getPosition(), !target.isPlayWhenReady());
+    }
+
+    private void sendState(boolean doSeek, boolean stateChange, long positionMs, boolean paused) {
+        SyncPlayClient current = client;
+        if (current == null) return;
+        double position = Math.max(0, positionMs / 1000.0);
+        if (!doSeek) position = Math.max(position, estimateRoomPosition());
+        current.setLocalState(position, paused);
+        current.sendState(doSeek, stateChange);
+    }
+
+    /** Replies to a state push with our live position, which keeps the room timeline honest. */
+    private void replyState() {
+        SyncPlayClient current = client;
+        if (current == null) return;
+        Player target = player;
+        if (target != null && target.hasMedia()) sendState(false, false);
+        else current.sendState(false, false);
+    }
+
+    /** Position of the room, extrapolated from the last state the server sent us. */
+    private double estimateRoomPosition() {
+        if (roomPositionAt == 0) return 0;
+        double position = roomPosition;
+        if (!roomPaused) position += (SystemClock.elapsedRealtime() - roomPositionAt) / 1000.0;
+        return Math.max(0, position);
+    }
+
+    private boolean isOwnSeek(long position, long timestamp) {
+        long guard = seekGuardTarget;
+        if (guard < 0 || timestamp >= seekGuardUntil) return false;
+        return Math.abs(position - guard) <= SEEK_GUARD_DRIFT;
+    }
+
+    /**
+     * Official Syncplay strategy: a small drift is corrected by nudging the playback rate instead of
+     * jumping, so the buffer of the stream we are watching is never thrown away. The rate is applied
+     * on top of the speed the user picked and disappears as soon as the drift is gone.
+     *
+     * @param drift positive when the local player is ahead of the room.
+     */
+    private void updateTempo(Player target, SyncPlayClient.SyncPlayState state, long drift, long timestamp) {
+        if (state.doSeek() || state.paused() || !target.isPlayWhenReady() || target.isBuffering()) {
+            applyTempo(target, 1f);
+            return;
+        }
+        long magnitude = Math.abs(drift);
+        if (magnitude <= TEMPO_RESET) applyTempo(target, 1f);
+        else if (magnitude > TEMPO_DRIFT) applyTempo(target, drift > 0 ? TEMPO_SLOW : TEMPO_FAST);
+    }
+
+    private void applyTempo(Player target, float value) {
+        if (tempoUnsupported) return;
+        if (target == null || !target.hasMedia()) return;
+        if (!target.setSyncTempo(value)) {
+            // Players without a speed command would be retried on every single state.
+            tempoUnsupported = true;
+            tempo = 1f;
+            return;
+        }
+        if (tempo == value) return;
+        tempo = value;
+        log("tempo %.2f", value);
+        if (value != 1f) toast(ResUtil.getString(R.string.sync_play_tempo, value));
+    }
+
+    private void resetTempo() {
+        tempo = 1f;
+        Player target = player;
+        if (target != null && target.hasMedia()) target.setSyncTempo(1f);
+    }
+
+    /** Latency aware dead band: a laggy link makes the remote position estimate jitter. */
+    private static long seekTolerance(long base, int rtt) {
+        return base + (rtt <= 0 ? 0 : Math.min(rtt / 2, 1500));
+    }
+
+    /** Growing pause between catch-up seeks so a slow stream is not rewound over and over. */
+    private long seekCooldown() {
+        return SEEK_COOLDOWN + Math.min(seekCount, 3) * 2000L;
     }
 
     /**
@@ -384,16 +537,14 @@ public final class SyncPlayManager {
             publishBuffering(true, true);
             localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
             localPlaying = true;
-            current.setLocalState(Math.max(0, target.getPosition() / 1000.0), false);
-            current.sendState(true, true);
+            sendState(true, true, target.getPosition(), false);
         } else {
             // The user paused during the buffering; make sure the room stays paused.
             log("buffering done while paused");
             publishBuffering(false);
             localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
             localPlaying = false;
-            current.setLocalState(Math.max(0, target.getPosition() / 1000.0), true);
-            current.sendState(false, true);
+            sendState(false, true, target.getPosition(), true);
         }
     }
 
@@ -416,13 +567,21 @@ public final class SyncPlayManager {
         Player target = player;
         if (current == null || target == null || !target.hasMedia() || !target.isBuffering()) return;
         if (!target.isPlayWhenReady()) return;
+        long timestamp = SystemClock.elapsedRealtime();
+        if (timestamp < seekBufferingUntil) {
+            // The stream is only refilling because of our own catch-up seek, not because it is slow.
+            long delay = Math.max(500, seekBufferingUntil - timestamp);
+            log("buffering after sync seek, recheck in %dms", delay);
+            App.post(() -> confirmBuffering(token), delay);
+            return;
+        }
         localBuffering = true;
         localBufferingWasPlaying = true;
         log("local buffering after %dms, pausing room", BUFFERING_DELAY);
+        resetTempo();
         publishBuffering(true, false);
         startBufferingHeartbeat();
-        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), true);
-        current.sendState(false, true);
+        sendState(false, true, target.getPosition(), true);
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
         localPlaying = false;
         dispatchBuffering();
@@ -438,9 +597,9 @@ public final class SyncPlayManager {
         stopBufferingHeartbeat();
         publishBuffering(false);
         dispatchBuffering();
+        resetTempo();
         if (current == null || target == null || !target.hasMedia()) return;
-        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), false);
-        current.sendState(false, true);
+        sendState(false, true, target.getPosition(), false);
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
     }
 
@@ -505,8 +664,8 @@ public final class SyncPlayManager {
         Player target = player;
         if (current == null || target == null || !target.hasMedia()) return;
         syncFile();
-        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), !target.isPlayWhenReady());
-        current.sendState(true, true);
+        resetTempo();
+        sendState(true, true);
         localPlaying = target.isPlayWhenReady();
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
     }
@@ -551,6 +710,10 @@ public final class SyncPlayManager {
         boolean own = !setBy.isEmpty() && setBy.equals(username);
         // The server echoes our own states back; applying them only makes the local player fight itself.
         if (own) return;
+        // The room timeline follows the slowest member, so it is the reference for our own reports.
+        roomPosition = Math.max(0, state.position());
+        roomPositionAt = now;
+        roomPaused = state.paused();
         boolean buffering = !setBy.isEmpty() && remoteBuffering.contains(setBy);
         boolean resume = !buffering && !setBy.isEmpty() && setBy.equals(bufferingClearedBy) && now - bufferingClearedAt < 3000;
         // Buffering transitions must not be dropped by the local/remote anti-flap windows.
@@ -583,15 +746,32 @@ public final class SyncPlayManager {
         if (resume) bufferingPaused = false;
         long duration = target.getDuration();
         if (duration <= 0) return;
-        long drift = Math.abs(target.getPosition() - position);
-        if (!state.doSeek() && drift <= SEEK_DRIFT) return;
-        if (!state.doSeek() && target.isBuffering()) return;
         long timestamp = SystemClock.elapsedRealtime();
-        if (!state.doSeek() && timestamp - lastSeekAt < REMOTE_WINDOW) return;
+        long actual = target.getPosition();
+        long drift = actual - position;
+        // Small drifts are covered by a playback rate nudge, only large ones need a seek.
+        updateTempo(target, state, drift, timestamp);
+        long limit = state.doSeek() ? SEEK_DEAD_ZONE : seekTolerance(drift > 0 ? SEEK_DRIFT : SEEK_FASTFORWARD, state.rtt());
+        if (Math.abs(drift) <= limit) {
+            // In sync: drop the backoff of an older, long settled catch-up seek.
+            if (timestamp - lastSeekAt > SEEK_CALM) seekCount = 0;
+            return;
+        }
+        // Rewinding a player that is still filling its buffer only restarts the buffering.
+        if (!state.doSeek() && target.isBuffering()) return;
+        // A catch-up seek has to settle before the next one: every extra seek throws away the
+        // buffer of the position we just moved to, so the player never catches up on a slow link.
+        if (!state.doSeek() && timestamp - lastSeekAt < seekCooldown()) return;
+        if (!state.doSeek()) seekCount++;
         lastSeekAt = timestamp;
+        resetTempo();
+        seekGuardTarget = Math.min(Math.max(position, 0), duration);
+        seekGuardUntil = timestamp + SEEK_GUARD;
+        seekBufferingUntil = timestamp + SEEK_BUFFER_GRACE;
         remotePaused = state.paused();
         remoteUntil = timestamp + REMOTE_WINDOW;
-        target.seekTo(Math.min(Math.max(position, 0), duration));
+        log("seek to %d (drift %d, retry %d)", seekGuardTarget, drift, seekCount);
+        target.seekTo(seekGuardTarget);
     }
 
     private void addRemoteBuffering(String name) {
@@ -602,9 +782,26 @@ public final class SyncPlayManager {
             return;
         }
         log("remote buffering: %s", name);
+        // Stop right away instead of waiting for the paused state, so nobody runs ahead of the
+        // member that fills its buffer.
+        pauseForBuffering();
         dispatchBuffering();
         toast(ResUtil.getString(R.string.sync_play_buffering, name));
         scheduleBufferingTimeout(name);
+    }
+
+    /** Pauses the local player because another member buffers, without reporting a user pause. */
+    private void pauseForBuffering() {
+        Player target = player;
+        if (target == null || !target.hasMedia() || !target.isPlayWhenReady()) return;
+        long timestamp = SystemClock.elapsedRealtime();
+        resetTempo();
+        bufferingPaused = true;
+        remotePaused = true;
+        remoteUntil = timestamp + REMOTE_WINDOW;
+        localPlaying = false;
+        log("pause for remote buffering");
+        target.pause();
     }
 
     private void scheduleBufferingTimeout(String name) {
@@ -641,12 +838,12 @@ public final class SyncPlayManager {
     private void resumeIfBufferingPaused() {
         if (!remoteBuffering.isEmpty() || !bufferingPaused) return;
         bufferingPaused = false;
+        resetTempo();
         SyncPlayClient current = client;
         Player target = player;
         if (current == null || target == null || !target.hasMedia()) return;
         if (target.isPlayWhenReady()) return;
-        current.setLocalState(Math.max(0, target.getPosition() / 1000.0), false);
-        current.sendState(false, true);
+        sendState(false, true, target.getPosition(), false);
         localUntil = SystemClock.elapsedRealtime() + REMOTE_WINDOW;
         localPlaying = true;
     }
@@ -856,6 +1053,15 @@ public final class SyncPlayManager {
         public void onState(SyncPlayClient.SyncPlayState state) {
             if (!isCurrent()) return;
             App.post(() -> applyState(state, client, joinedAt));
+        }
+
+        @Override
+        public void onStateReply() {
+            if (!isCurrent()) return;
+            App.post(() -> {
+                if (!isCurrent()) return;
+                replyState();
+            });
         }
 
         @Override

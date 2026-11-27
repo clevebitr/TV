@@ -120,7 +120,7 @@ public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter
 
     private void setSpeed(@NonNull Slider slider, float value, boolean fromUser) {
         parent.control.action.speed.setText(player.setSpeed(value));
-        if (history != null) history.setSpeed(player.getSpeed());
+        if (history != null) history.setSpeed(player.getUserSpeed());
     }
 
     private void setScaleText() {
@@ -166,7 +166,7 @@ public class ControlDialog extends BaseBottomSheetDialog implements ParseAdapter
     }
 
     public void setPlayer() {
-        binding.speed.setValue(Math.max(player.getSpeed(), 0.5f));
+        binding.speed.setValue(Math.max(player.getUserSpeed(), 0.5f));
         binding.player.setText(parent.control.action.player.getText());
         binding.decode.setVisibility(parent.control.action.decode.getVisibility());
         binding.danmaku.setVisibility(parent.control.action.danmaku.getVisibility());

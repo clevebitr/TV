@@ -345,4 +345,6 @@
     <string name="sync_play_buffering_timeout">%1$s is still buffering, resuming playback</string>
     <string name="sync_play_buffering_wait">Waiting for %1$s to finish buffering</string>
     <string name="sync_play_buffering_tag">Buffering</string>
+    <string name="sync_play_overlay_wait">Waiting for %1$s to buffer…</string>
+    <string name="sync_play_tempo">Speed nudged to %1$.2f× to stay in sync</string>
 </resources>

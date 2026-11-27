@@ -43,6 +43,13 @@ public class SyncPlayClient {
         default void onState(SyncPlayState state) {
         }
 
+        /**
+         * The server pushed a state and expects our own state back. It is answered from the main
+         * thread, because the reply has to read the live player position.
+         */
+        default void onStateReply() {
+        }
+
         default void onFileChanged(String username, String name) {
         }
 
@@ -60,6 +67,8 @@ public class SyncPlayClient {
     private static final double PING_WEIGHT = 0.85;
     private static final int CONNECT_TIMEOUT = 10000;
     private static final int HANDSHAKE_TIMEOUT = 15000;
+    /** A state change that the server never acknowledged must not mute us forever. */
+    private static final long IGNORE_TIMEOUT = 3000;
 
     private final Object writeLock = new Object();
     private final ExecutorService writer = Executors.newSingleThreadExecutor(runnable -> {
@@ -88,6 +97,7 @@ public class SyncPlayClient {
     private boolean pausedState = true;
     private int clientIgnore;
     private int serverIgnore;
+    private long clientIgnoreAt;
     private int reportedRtt = -1;
 
     public SyncPlayClient(@NonNull String host, int port, boolean tls, @NonNull Listener listener) {
@@ -253,7 +263,13 @@ public class SyncPlayClient {
     public void sendState(boolean doSeek, boolean stateChange) {
         if (closed) return;
         try {
-            if (stateChange) clientIgnore++;
+            // Decided before the counter grows: a state change is always reported, a plain reply is
+            // muted while the server has not acknowledged our last change yet.
+            boolean mute = clientIgnore > 0 && serverIgnore == 0;
+            if (stateChange) {
+                clientIgnore++;
+                clientIgnoreAt = System.currentTimeMillis();
+            }
             Integer serverAck = null;
             Integer clientAck = null;
             if (serverIgnore > 0) {
@@ -272,7 +288,7 @@ public class SyncPlayClient {
             if (latencyCalculation > 0) ping.put("latencyCalculation", latencyCalculation);
             JSONObject state = new JSONObject();
             state.put("ping", ping);
-            state.put("playstate", playstate);
+            if (!mute) state.put("playstate", playstate);
             if (clientAck != null || serverAck != null) {
                 JSONObject ignore = new JSONObject();
                 if (clientAck != null) ignore.put("client", clientAck);
@@ -473,6 +489,10 @@ public class SyncPlayClient {
                 clientIgnore = 0;
             }
         }
+        if (clientIgnore > 0 && System.currentTimeMillis() - clientIgnoreAt > IGNORE_TIMEOUT) {
+            // Servers that do not echo ignoringOnTheFly would otherwise mute us for good.
+            clientIgnore = 0;
+        }
         JSONObject playstate = state.optJSONObject("playstate");
         if (playstate != null && clientIgnore == 0) {
             double position = playstate.optDouble("position", 0);
@@ -484,7 +504,10 @@ public class SyncPlayClient {
             pausedState = paused;
             listener.onState(new SyncPlayState(calculated, paused, doSeek, setBy, getRtt()));
         }
-        sendState(false, false);
+        // The reply is built on the main thread from the live player position: echoing the received
+        // snapshot (or a stale local one) rewinds the room timeline, which is built on the slowest
+        // member, and every peer then gets pulled back.
+        listener.onStateReply();
     }
 
     private void updateRtt(double clientLatency, double senderRtt) {

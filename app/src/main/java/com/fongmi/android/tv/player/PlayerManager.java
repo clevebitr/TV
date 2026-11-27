@@ -56,6 +56,8 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
     private long pendingStartPositionMs;
     private boolean danmakuEnabled;
     private boolean initTrack;
+    private float speed;
+    private float tempo;
     private int retry;
     private int decode;
 
@@ -66,6 +68,8 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
         this.engine = PlayerEngineFactory.create(decode, listener);
         this.player = engine.getPlayer();
         this.pendingStartPositionMs = C.TIME_UNSET;
+        this.speed = 1.0f;
+        this.tempo = 1.0f;
         this.danmakuConfig = DanmakuSetting.getConfig();
         this.danmakuEnabled = DanmakuSetting.isShow();
     }
@@ -166,8 +170,14 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
         return spec == null || spec.getHeaders() == null ? new HashMap<>() : spec.getHeaders();
     }
 
+    /** Live playback speed, including the temporary sync tempo. */
     public float getSpeed() {
         return player.getPlaybackParameters().speed;
+    }
+
+    /** Speed chosen by the user; this is what the UI shows and the history stores. */
+    public float getUserSpeed() {
+        return speed;
     }
 
     public boolean isEmpty() {
@@ -236,7 +246,7 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
     }
 
     public String getSpeedText() {
-        return String.format(Locale.getDefault(), "%.2f", getSpeed());
+        return String.format(Locale.getDefault(), "%.2f", speed);
     }
 
     public String getDecodeText() {
@@ -301,27 +311,49 @@ public class PlayerManager implements ParseCallback, SyncPlayManager.Player {
     }
 
     public String setSpeed(float speed) {
-        if (!player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) return getSpeedText();
-        player.setPlaybackParameters(player.getPlaybackParameters().withSpeed(speed));
+        this.speed = Math.clamp(speed, 0.25f, 5.0f);
+        // An explicit user choice always wins over the tempo the sync layer applied.
+        this.tempo = 1.0f;
+        applySpeed();
         return getSpeedText();
     }
 
+    /**
+     * Temporarily multiplies the user speed so the sync layer can slowly catch up or fall back
+     * instead of jumping. It is never persisted and never shown in the UI.
+     *
+     * @return false when the player cannot change its speed.
+     */
+    @Override
+    public boolean setSyncTempo(float value) {
+        if (player == null || !player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) return false;
+        float target = Math.clamp(value, 0.75f, 1.25f);
+        if (tempo == target) return true;
+        tempo = target;
+        applySpeed();
+        return true;
+    }
+
+    private void applySpeed() {
+        if (player == null || !player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) return;
+        player.setPlaybackParameters(player.getPlaybackParameters().withSpeed(Math.clamp(speed * tempo, 0.25f, 5.0f)));
+    }
+
     public String addSpeed() {
-        float speed = getSpeed();
         float step = speed >= 2 ? 1f : 0.25f;
         return setSpeed(speed >= 5 ? 0.25f : Math.min(speed + step, 5.0f));
     }
 
     public String addSpeed(float value) {
-        return setSpeed(Math.clamp(getSpeed() + value, 0.25f, 5.0f));
+        return setSpeed(Math.clamp(speed + value, 0.25f, 5.0f));
     }
 
     public String subSpeed(float value) {
-        return setSpeed(Math.clamp(getSpeed() - value, 0.25f, 5.0f));
+        return setSpeed(Math.clamp(speed - value, 0.25f, 5.0f));
     }
 
     public String toggleSpeed() {
-        return setSpeed(getSpeed() == 1 ? PlayerSetting.getSpeed() : 1);
+        return setSpeed(speed == 1 ? PlayerSetting.getSpeed() : 1);
     }
 
     public void setTrack(List<Track> tracks) {
