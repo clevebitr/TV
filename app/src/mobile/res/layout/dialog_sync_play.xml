@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -40,8 +39,8 @@
                 android:text="@string/sync_play_back"
                 android:textSize="13sp"
                 android:visibility="gone"
-                app:insetBottom="2dp"
-                app:insetTop="2dp"
+                android:insetBottom="2dp"
+                android:insetTop="2dp"
                 tools:visibility="visible" />
 
             <com.google.android.material.textview.MaterialTextView
@@ -123,8 +122,8 @@
                     android:paddingEnd="8dp"
                     android:text="@string/sync_play_create_room_button"
                     android:textSize="14sp"
-                    app:insetBottom="0dp"
-                    app:insetTop="0dp" />
+                    android:insetBottom="0dp"
+                    android:insetTop="0dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/join"
@@ -143,8 +142,8 @@
                     android:paddingEnd="8dp"
                     android:text="@string/sync_play_join_room_button"
                     android:textSize="14sp"
-                    app:insetBottom="0dp"
-                    app:insetTop="0dp" />
+                    android:insetBottom="0dp"
+                    android:insetTop="0dp" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -302,8 +301,8 @@
                     android:paddingEnd="8dp"
                     android:text="@string/sync_play_regenerate"
                     android:textSize="12sp"
-                    app:insetBottom="4dp"
-                    app:insetTop="4dp" />
+                    android:insetBottom="4dp"
+                    android:insetTop="4dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/copy"
@@ -316,8 +315,8 @@
                     android:paddingEnd="8dp"
                     android:text="@string/sync_play_copy"
                     android:textSize="12sp"
-                    app:insetBottom="4dp"
-                    app:insetTop="4dp" />
+                    android:insetBottom="4dp"
+                    android:insetTop="4dp" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -338,8 +337,8 @@
                 android:minHeight="46dp"
                 android:text="@string/sync_play_create_join"
                 android:textSize="14sp"
-                app:insetBottom="0dp"
-                app:insetTop="0dp" />
+                android:insetBottom="0dp"
+                android:insetTop="0dp" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -404,8 +403,8 @@
                     android:paddingEnd="10dp"
                     android:text="@string/sync_play_paste"
                     android:textSize="12sp"
-                    app:insetBottom="4dp"
-                    app:insetTop="4dp" />
+                    android:insetBottom="4dp"
+                    android:insetTop="4dp" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -426,8 +425,8 @@
                 android:minHeight="46dp"
                 android:text="@string/sync_play_join_submit"
                 android:textSize="14sp"
-                app:insetBottom="0dp"
-                app:insetTop="0dp" />
+                android:insetBottom="0dp"
+                android:insetTop="0dp" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -507,8 +506,8 @@
                     android:minHeight="44dp"
                     android:text="@string/sync_play_test_all"
                     android:textSize="13sp"
-                    app:insetBottom="0dp"
-                    app:insetTop="0dp" />
+                    android:insetBottom="0dp"
+                    android:insetTop="0dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/saveServer"
@@ -522,8 +521,8 @@
                     android:minHeight="44dp"
                     android:text="@string/sync_play_confirm"
                     android:textSize="13sp"
-                    app:insetBottom="0dp"
-                    app:insetTop="0dp" />
+                    android:insetBottom="0dp"
+                    android:insetTop="0dp" />
 
             </androidx.appcompat.widget.LinearLayoutCompat>
 
@@ -584,8 +583,8 @@
                 android:minHeight="44dp"
                 android:text="@string/sync_play_leave"
                 android:textSize="14sp"
-                app:insetBottom="0dp"
-                app:insetTop="0dp" />
+                android:insetBottom="0dp"
+                android:insetTop="0dp" />
 
         </androidx.appcompat.widget.LinearLayoutCompat>
 
